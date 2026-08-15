@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+:: Önceki açık prompter varsa temizle
+taskkill /F /IM python.exe /IM pythonw.exe >nul 2>&1
+
 set "PY_EXE=C:\Users\%USERNAME%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\pythonw.exe"
 
 if not exist "%PY_EXE%" (

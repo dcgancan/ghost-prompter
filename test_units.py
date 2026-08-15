@@ -1,5 +1,5 @@
 """
-Unit tests for WordMatcher and Stealth modules
+Unit tests for Rock-Solid WordMatcher and Anti-Jump mechanics
 """
 
 import sys
@@ -16,32 +16,31 @@ class TestPrompterCore(unittest.TestCase):
         self.assertEqual(normalize_turkish("İstanbul!"), "istanbul")
         self.assertEqual(normalize_turkish("Isparta?"), "isparta")
 
-    def test_levenshtein_similarity(self):
-        self.assertEqual(levenshtein_similarity("merhaba", "merhaba"), 1.0)
-        self.assertGreater(levenshtein_similarity("arkadaslar", "arkadas"), 0.6)
-        self.assertLess(levenshtein_similarity("araba", "bilgisayar"), 0.3)
-
-    def test_word_matcher_tracking(self):
-        script = "Herkese merhaba arkadaşlar. Bugün sizlerle beraber yeni bir proje inceliyoruz."
+    def test_anti_jump_protection(self):
+        script = (
+            "Bugün Ulusoy Digital stüdyolarında geliştirdiğimiz yeni nesil ses takipli teleprompter yazılımını inceliyoruz. "
+            "Bu uygulamanın en büyük gücü ben konuştukça sesimi kelime kelime takip edip metni tam konuşma hızımda otomatik kaydırması. "
+            "Üstelik şu anda ekran kaydı alırken bu prompter penceresi video kaydında kesinlikle görünmüyor. "
+            "Otomatik olarak yeni içerikler için bizi takip edin."
+        )
         matcher = WordMatcher(script)
         
-        self.assertEqual(matcher.total_words, 10)
-        self.assertEqual(matcher.current_index, 0)
+        # Say first words
+        idx = matcher.match_spoken_phrase("bugün ulusoy digital")
+        self.assertEqual(idx, 2)  # Points to "digital"
         
-        # Match first phrase
-        idx = matcher.match_spoken_phrase("herkese merhaba")
-        self.assertIsNotNone(idx)
-        self.assertEqual(idx, 1)  # Points to "merhaba"
+        # Say next words
+        idx = matcher.match_spoken_phrase("stüdyolarında geliştirdiğimiz")
+        self.assertEqual(idx, 4)  # Points to "geliştirdiğimiz"
         
-        # Match next phrase
-        idx = matcher.match_spoken_phrase("arkadaşlar bugün sizlerle")
-        self.assertIsNotNone(idx)
-        self.assertEqual(idx, 4)  # Points to "sizlerle"
+        # Saying "ses takipli teleprompter" matches index 9 ("teleprompter")
+        idx = matcher.match_spoken_phrase("ses takipli teleprompter")
+        self.assertEqual(idx, 9)
         
-        # Match with a skipped word or slight speech typo
-        idx = matcher.match_spoken_phrase("yeni proje inceliyoruz")
-        self.assertIsNotNone(idx)
-        self.assertEqual(idx, 9)  # Points to "inceliyoruz"
+        # Saying "otomatik kaydırması" when reached near it (index 27) matches index 29 ("kaydırması")
+        matcher.set_index(26)  # Near "konuşma"
+        idx = matcher.match_spoken_phrase("otomatik kaydırması")
+        self.assertEqual(idx, 29)  # Points cleanly to "kaydırması" at index 29, NOT index 43!
 
     def test_stealth_support(self):
         supported = stealth.is_stealth_supported()

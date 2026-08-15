@@ -1,7 +1,7 @@
 """
-Smart Word Matcher and Alignment Engine
-Tokenizes prompter text of ANY length without limits.
-Instantly aligns partial and full streaming spoken phrases with sub-millisecond execution.
+Rock-Solid Sequential Word Matcher
+Strict sequential progression with proximity weighting and jump dampening.
+Prevents skipping ahead, wild jumps, and short-word false triggers.
 """
 
 import re
@@ -65,6 +65,13 @@ def levenshtein_similarity(s1: str, s2: str) -> float:
     return 1.0 - (distance / max_len)
 
 
+# Common Turkish stop words that should not trigger distant jumps
+COMMON_STOP_WORDS = {
+    "ve", "veya", "ile", "bir", "bu", "şu", "o", "de", "da", "ki",
+    "mi", "mu", "mü", "mı", "en", "çok", "daha", "için", "gibi", "kadar"
+}
+
+
 class ScriptToken:
     __slots__ = ('index', 'original_text', 'clean_text', 'line_number', 'is_newline')
     
@@ -80,13 +87,12 @@ class ScriptToken:
 
 
 class WordMatcher:
-    def __init__(self, script_text: str = "", lookahead_window: int = 25, lookbehind_window: int = 3):
+    def __init__(self, script_text: str = "", max_single_jump: int = 4, lookahead_window: int = 15):
         self.script_text = script_text
+        self.max_single_jump = max_single_jump
         self.lookahead_window = lookahead_window
-        self.lookbehind_window = lookbehind_window
         self.tokens: List[ScriptToken] = []
         self.current_index: int = 0
-        self.min_similarity_threshold: float = 0.60
         self.load_script(script_text)
 
     def load_script(self, script_text: str):
@@ -128,8 +134,10 @@ class WordMatcher:
 
     def match_spoken_phrase(self, recognized_phrase: str) -> Optional[int]:
         """
-        Instant streaming matcher for incoming partial/full phrases.
-        Matches the latest spoken word or word sequence against the lookahead window.
+        Ultra-stable sequential matching:
+        - Strongly favors the immediate next words (index + 1, index + 2).
+        - Penalizes distant candidates so it NEVER jumps far ahead.
+        - Multi-word confirmation required for larger leaps.
         """
         if not self.tokens or not recognized_phrase.strip():
             return None
@@ -139,53 +147,74 @@ class WordMatcher:
         if not spoken_words:
             return None
 
-        start_idx = max(0, self.current_index - self.lookbehind_window)
-        end_idx = min(len(self.tokens), self.current_index + self.lookahead_window)
+        cur = self.current_index
+        total = len(self.tokens)
 
-        best_match_idx = None
-        best_score = 0.0
+        # 1. First priority: Check immediate next words [cur, cur + 1, cur + 2, cur + 3]
+        # Compare with the latest spoken word
+        latest_spoken = spoken_words[-1]
+        
+        # Check immediate next 4 words with priority
+        immediate_end = min(total, cur + self.max_single_jump + 1)
+        for i in range(cur, immediate_end):
+            script_clean = self.tokens[i].clean_text
+            if not script_clean:
+                continue
+                
+            # Exact or strong prefix match on immediate next words
+            if latest_spoken == script_clean or (len(latest_spoken) >= 3 and (latest_spoken.startswith(script_clean) or script_clean.startswith(latest_spoken))):
+                self.set_index(i)
+                return self.current_index
+            
+            # High Levenshtein on immediate word
+            if len(latest_spoken) >= 4 and len(script_clean) >= 4:
+                sim = levenshtein_similarity(latest_spoken, script_clean)
+                if sim >= 0.75:
+                    self.set_index(i)
+                    return self.current_index
 
-        # 1. Multi-word phrase matching (highest precision)
-        if len(spoken_words) > 1:
-            for i in range(start_idx, end_idx - len(spoken_words) + 1):
+        # 2. Multi-word exact sequence check (if spoken_words > 1)
+        if len(spoken_words) >= 2:
+            search_end = min(total - len(spoken_words) + 1, cur + self.lookahead_window)
+            best_multi_idx = None
+            best_multi_score = 0.0
+
+            for i in range(cur, search_end):
                 score_sum = 0.0
                 for k, s_word in enumerate(spoken_words):
                     sc_word = self.tokens[i + k].clean_text
                     if s_word == sc_word:
                         score_sum += 1.0
-                    elif s_word.startswith(sc_word) or sc_word.startswith(s_word):
-                        score_sum += 0.88
+                    elif len(s_word) >= 3 and (s_word.startswith(sc_word) or sc_word.startswith(s_word)):
+                        score_sum += 0.85
                     else:
                         score_sum += levenshtein_similarity(s_word, sc_word)
-                        
+
                 avg_score = score_sum / len(spoken_words)
-                if avg_score > best_score and avg_score >= self.min_similarity_threshold:
-                    best_score = avg_score
-                    best_match_idx = i + len(spoken_words) - 1
+                
+                # Distance penalty to prevent jumping across paragraphs
+                distance = i - cur
+                distance_penalty = distance * 0.02
+                adjusted_score = avg_score - distance_penalty
 
-        # 2. Match latest spoken word immediately (instant <20ms word jumping)
-        if best_match_idx is None:
-            latest_word = spoken_words[-1]
-            if len(latest_word) > 1:
-                for i in range(start_idx, end_idx):
-                    script_word = self.tokens[i].clean_text
-                    if not script_word:
-                        continue
-                        
-                    sim = 0.0
-                    if latest_word == script_word:
-                        sim = 1.0
-                    elif latest_word.startswith(script_word) or script_word.startswith(latest_word):
-                        sim = 0.92
-                    else:
-                        sim = levenshtein_similarity(latest_word, script_word)
-                        
-                    if sim > best_score and sim >= self.min_similarity_threshold:
-                        best_score = sim
-                        best_match_idx = i
+                if adjusted_score > best_multi_score and adjusted_score >= 0.70:
+                    best_multi_score = adjusted_score
+                    best_multi_idx = i + len(spoken_words) - 1
 
-        if best_match_idx is not None and best_score >= self.min_similarity_threshold:
-            self.set_index(best_match_idx)
-            return self.current_index
+            if best_multi_idx is not None:
+                # Ensure jump is within safe distance
+                if best_multi_idx - cur <= self.lookahead_window:
+                    self.set_index(best_multi_idx)
+                    return self.current_index
+
+        # 3. Fuzzy check on the immediate next 2 words only
+        if len(latest_spoken) >= 4 and latest_spoken not in COMMON_STOP_WORDS:
+            for i in range(cur, min(total, cur + 3)):
+                script_clean = self.tokens[i].clean_text
+                if len(script_clean) >= 4:
+                    sim = levenshtein_similarity(latest_spoken, script_clean)
+                    if sim >= 0.70:
+                        self.set_index(i)
+                        return self.current_index
 
         return None

@@ -1,12 +1,13 @@
 """
-Voice Recognition Engine for Real-Time Prompter Following
-Listens to the microphone in a non-blocking background thread,
-performs fast speech-to-text, and emits recognized phrases for word tracking.
+Voice Recognition Engine with Real-Time VAD & Low Latency Streaming
+Ulusoy Digital Prompter - Zero-Lag Speech Tracking
 """
 
 import time
+import math
 import queue
 import threading
+import numpy as np
 from typing import Optional, List
 import speech_recognition as sr
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -40,10 +41,11 @@ def clean_device_name(name: str) -> str:
 
 
 class VoiceEngineSignals(QObject):
-    speech_detected = pyqtSignal(str)     # Emits recognized phrase
-    mic_level = pyqtSignal(float)          # Emits 0.0 - 1.0 audio volume level
-    status_changed = pyqtSignal(str)       # "Dinleniyor...", "Bağlandı", etc.
-    error_occurred = pyqtSignal(str)       # Error message
+    speech_detected = pyqtSignal(str)       # Emits recognized phrase
+    voice_active = pyqtSignal(bool)         # True when user is actively speaking (VAD)
+    mic_level = pyqtSignal(float)            # Emits 0.0 - 1.0 audio volume level
+    status_changed = pyqtSignal(str)         # "Dinleniyor...", "Bağlandı", etc.
+    error_occurred = pyqtSignal(str)         # Error message
 
 
 class VoiceEngine:
@@ -53,16 +55,19 @@ class VoiceEngine:
         self.signals = VoiceEngineSignals()
         self.is_running = False
         self.is_paused = False
+        
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         
         self.recognizer = sr.Recognizer()
-        # Optimize for low latency speech tracking
-        self.recognizer.energy_threshold = 300
+        # Ultra low latency for instant word flow
+        self.recognizer.energy_threshold = 260
         self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.pause_threshold = 0.5        # Pause time before phrase is sent
-        self.recognizer.phrase_threshold = 0.2
-        self.recognizer.non_speaking_duration = 0.3
+        self.recognizer.dynamic_energy_adjustment_damping = 0.15
+        self.recognizer.dynamic_energy_ratio = 1.4
+        self.recognizer.pause_threshold = 0.35         # Ultra fast silence cut (<350ms)
+        self.recognizer.phrase_threshold = 0.15        # Minimum speech to trigger
+        self.recognizer.non_speaking_duration = 0.25
 
     @staticmethod
     def get_microphone_list() -> List[tuple]:
@@ -96,55 +101,59 @@ class VoiceEngine:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._thread.start()
-        self.signals.status_changed.emit("🎤 Mikrofon dinleniyor...")
+        self.signals.status_changed.emit("🎤 Canlı ses takibi aktif...")
 
     def pause(self):
         self.is_paused = True
+        self.signals.voice_active.emit(False)
         self.signals.status_changed.emit("⏸️ Ses takibi duraklatıldı")
 
     def resume(self):
         self.is_paused = False
-        self.signals.status_changed.emit("🎤 Mikrofon dinleniyor...")
+        self.signals.status_changed.emit("🎤 Canlı ses takibi aktif...")
 
     def stop(self):
         """Stops background thread."""
         self.is_running = False
         self._stop_event.set()
+        self.signals.voice_active.emit(False)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
         self._thread = None
         self.signals.status_changed.emit("⏹️ Ses takibi kapalı")
 
     def _listen_loop(self):
-        """Continuous background listening loop."""
+        """Continuous background listening loop with live VAD activity."""
         try:
             with sr.Microphone(device_index=self.mic_device_index) as source:
-                # Quick ambient noise calibration
                 try:
-                    self.signals.status_changed.emit("⚙️ Ortam sesi ayarlanıyor...")
-                    self.recognizer.adjust_for_ambient_noise(source, duration=0.8)
+                    self.signals.status_changed.emit("⚙️ Ortam sesi kalibre ediliyor...")
+                    self.recognizer.adjust_for_ambient_noise(source, duration=0.6)
                 except Exception:
                     pass
 
-                self.signals.status_changed.emit("🎤 Konuşmanız dinleniyor...")
+                self.signals.status_changed.emit("🎤 Konuşmanız canlı dinleniyor...")
 
                 while self.is_running and not self._stop_event.is_set():
                     if self.is_paused:
-                        time.sleep(0.1)
+                        time.sleep(0.08)
                         continue
 
                     try:
-                        # Listen for short spoken phrase
+                        # Listen for short phrase with tight timeouts
                         audio = self.recognizer.listen(
                             source,
-                            timeout=2.0,
-                            phrase_time_limit=4.0
+                            timeout=1.5,
+                            phrase_time_limit=3.5
                         )
                         
                         if self.is_paused or not self.is_running:
                             continue
 
-                        # Recognize speech via Google's free streaming speech API (fast & multilingual)
+                        # Signal VAD speech active
+                        self.signals.voice_active.emit(True)
+
+                        # Recognize speech asynchronously
                         try:
                             text = self.recognizer.recognize_google(
                                 audio,
@@ -153,23 +162,20 @@ class VoiceEngine:
                             if text and text.strip():
                                 self.signals.speech_detected.emit(text.strip())
                         except sr.UnknownValueError:
-                            # Audio not understood / background silence
                             pass
                         except sr.RequestError as req_err:
-                            self.signals.error_occurred.emit(f"Bağlantı hatası: {req_err}")
-                            time.sleep(1.0)
+                            time.sleep(0.5)
 
                     except sr.WaitTimeoutError:
-                        # Normal timeout when user is silent
-                        pass
+                        # Silence detected -> emit speech inactive
+                        self.signals.voice_active.emit(False)
                     except Exception as e:
                         if self.is_running:
-                            print(f"[VoiceEngine] Dinleme hatası: {e}")
-                            time.sleep(0.2)
+                            time.sleep(0.1)
 
         except Exception as e:
-            err_msg = f"Mikrofon başlatılamadı: {e}"
+            err_msg = f"Mikrofon hatası: {e}"
             print(f"[VoiceEngine] {err_msg}")
             self.signals.error_occurred.emit(err_msg)
-            self.signals.status_changed.emit("❌ Mikrofon hatası")
+            self.signals.status_changed.emit("❌ Mikrofon başlatılamadı")
             self.is_running = False

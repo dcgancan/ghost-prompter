@@ -1,7 +1,7 @@
 """
 Main Prompter Overlay Window
 Ulusoy Digital - GhostPrompter
-100% Transparent Canvas + Click-Through (F8) + High-Contrast Floating Text
+Full Internationalization (Turkish 🇹🇷 & English 🇺🇸) + Stealth Mode + Click-Through (F8)
 """
 
 import sys
@@ -17,11 +17,13 @@ from PyQt6.QtWidgets import (
 from prompter_view import PrompterCanvas
 from word_matcher import WordMatcher
 from voice_engine import VoiceEngine
+from i18n import I18nManager
 import stealth
 
 
 class PrompterWindow(QMainWindow):
     open_editor_requested = pyqtSignal()
+    language_switched = pyqtSignal(str)
 
     def __init__(self, matcher: WordMatcher, voice_engine: VoiceEngine):
         super().__init__()
@@ -50,6 +52,7 @@ class PrompterWindow(QMainWindow):
 
         # Setup UI
         self._init_ui()
+        self.retranslate_ui()
         self._connect_signals()
 
     def _init_ui(self):
@@ -60,7 +63,6 @@ class PrompterWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
 
         # Outer Glass Card with Border
-        # Varsayılan olarak tamamen şeffaf arka plan
         self.card_frame = QFrame(self.central_widget)
         self.card_frame.setObjectName("cardFrame")
         self.card_frame.setStyleSheet("""
@@ -75,7 +77,7 @@ class PrompterWindow(QMainWindow):
         self.card_layout.setContentsMargins(0, 0, 0, 0)
         self.card_layout.setSpacing(0)
 
-        # 1. Top Header Bar (Hafif Yarı Saydam Kontroller)
+        # 1. Top Header Bar
         self.header_bar = QWidget(self.card_frame)
         self.header_bar.setFixedHeight(42)
         self.header_bar.setStyleSheet("""
@@ -92,7 +94,7 @@ class PrompterWindow(QMainWindow):
 
         # Brand Button
         self.brand_btn = QPushButton("🚀 ULUSOY DIGITAL", self.header_bar)
-        self.brand_btn.setToolTip("ulusoydigital.com - Muzaffer Ulusoy\nWeb sitesini açmak için tıklayın")
+        self.brand_btn.setToolTip("ulusoydigital.com - Muzaffer Ulusoy")
         self.brand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.brand_btn.setStyleSheet("""
             QPushButton {
@@ -108,9 +110,29 @@ class PrompterWindow(QMainWindow):
         """)
         self.brand_btn.clicked.connect(lambda: webbrowser.open("https://ulusoydigital.com"))
 
+        # Language Quick Switcher Toggle (🇹🇷 TR / 🇺🇸 EN)
+        self.btn_lang_toggle = QPushButton("🇹🇷 TR", self.header_bar)
+        self.btn_lang_toggle.setToolTip("Switch Language / Dil Değiştir (Türkçe / English)")
+        self.btn_lang_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_lang_toggle.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.12);
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 3px 8px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 240, 255, 0.3);
+                border-color: #00F0FF;
+            }
+        """)
+        self.btn_lang_toggle.clicked.connect(self.toggle_language)
+
         # Ghost Mode Badge
-        self.stealth_badge = QPushButton("🛡️ Kayıtta Gizli", self.header_bar)
-        self.stealth_badge.setToolTip("OBS, Loom ve Ekran Kaydedicilerde bu pencere görünmez!")
+        self.stealth_badge = QPushButton(self.header_bar)
         self.stealth_badge.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stealth_badge.setStyleSheet("""
             QPushButton {
@@ -126,8 +148,7 @@ class PrompterWindow(QMainWindow):
         self.stealth_badge.clicked.connect(self.toggle_stealth_mode)
 
         # Click-Through Mode Toggle Badge (F8)
-        self.click_through_badge = QPushButton("🖱️ Arkaya Tıkla (F8)", self.header_bar)
-        self.click_through_badge.setToolTip("Tıklama Geçirgenliği (F8 Tuşu):\nAktif edildiğinde fareniz doğrudan arkadaki tarayıcıya/uygulamaya tıklar.\nPrompter üstte şeffaf kalır ve sesinizi takip eder!")
+        self.click_through_badge = QPushButton(self.header_bar)
         self.click_through_badge.setCursor(Qt.CursorShape.PointingHandCursor)
         self.click_through_badge.setStyleSheet("""
             QPushButton {
@@ -143,8 +164,7 @@ class PrompterWindow(QMainWindow):
         self.click_through_badge.clicked.connect(self.toggle_click_through)
 
         # Slim Top Banner Preset Button
-        self.btn_top_banner = QPushButton("📏 Kamera Çubuğu", self.header_bar)
-        self.btn_top_banner.setToolTip("Prompterı kameranın tam altına ince yatay şerit yapar.\nBöylece ekranın altındaki tüm buton ve uygulamaları rahatça görürsünüz!")
+        self.btn_top_banner = QPushButton(self.header_bar)
         self.btn_top_banner.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_top_banner.setStyleSheet("""
             QPushButton {
@@ -159,17 +179,18 @@ class PrompterWindow(QMainWindow):
         """)
         self.btn_top_banner.clicked.connect(self.toggle_top_banner_mode)
 
-        # Live Status Label
-        self.status_lbl = QLabel("🎤 Konuşmanız bekleniyor...", self.header_bar)
+        # Status Label
+        self.status_lbl = QLabel(self.header_bar)
         self.status_lbl.setStyleSheet("color: #8B949E; font-size: 11px;")
 
         # Controls
-        self.btn_editor = self._create_icon_btn("📝", "Metin Düzenleyici ve Ayarlar Paneli", self._open_editor)
-        self.btn_pin = self._create_icon_btn("📌", "Her Zaman Üstte Sabitle", self.toggle_always_on_top)
-        self.btn_min = self._create_icon_btn("🗕", "Simge Durumuna Küçült", self.showMinimized)
-        self.btn_close = self._create_icon_btn("✕", "Kapat", self.close, is_close=True)
+        self.btn_editor = self._create_icon_btn("📝", "", self._open_editor)
+        self.btn_pin = self._create_icon_btn("📌", "", self.toggle_always_on_top)
+        self.btn_min = self._create_icon_btn("🗕", "", self.showMinimized)
+        self.btn_close = self._create_icon_btn("✕", "", self.close, is_close=True)
 
         self.header_layout.addWidget(self.brand_btn)
+        self.header_layout.addWidget(self.btn_lang_toggle)
         self.header_layout.addWidget(self.stealth_badge)
         self.header_layout.addWidget(self.click_through_badge)
         self.header_layout.addWidget(self.btn_top_banner)
@@ -180,7 +201,7 @@ class PrompterWindow(QMainWindow):
         self.header_layout.addWidget(self.btn_min)
         self.header_layout.addWidget(self.btn_close)
 
-        # 2. Prompter Canvas (%100 Şeffaf Arka Plan)
+        # 2. Prompter Canvas
         self.canvas = PrompterCanvas(self.matcher, self.card_frame)
 
         # 3. Bottom Controls Bar
@@ -215,24 +236,17 @@ class PrompterWindow(QMainWindow):
         self.bottom_layout.setContentsMargins(12, 0, 12, 0)
         self.bottom_layout.setSpacing(8)
 
-        # Mode Toggle
-        self.btn_mode = QPushButton("🎤 Ses Takipli", self.bottom_bar)
-        self.btn_mode.setToolTip("Konuşmanızla senkronize kayma modu (Sadece siz konuştuğunuzda kayar)")
+        self.btn_mode = QPushButton(self.bottom_bar)
         self.btn_mode.setStyleSheet("background-color: #00F0FF; color: #0B0E14; font-weight: bold;")
         self.btn_mode.clicked.connect(self.toggle_voice_manual_mode)
 
-        # Play/Pause
         self.btn_play_pause = QPushButton("⏸️", self.bottom_bar)
-        self.btn_play_pause.setToolTip("Oynat / Duraklat (Boşluk Tuşu)")
         self.btn_play_pause.setFixedWidth(34)
         self.btn_play_pause.clicked.connect(self.toggle_play_pause)
 
-        # Reset
-        self.btn_reset = QPushButton("⏮️ Başa Sar", self.bottom_bar)
-        self.btn_reset.setToolTip("Metni en başa sar (R Tuşu)")
+        self.btn_reset = QPushButton(self.bottom_bar)
         self.btn_reset.clicked.connect(self.reset_prompter)
 
-        # Font +/-
         self.btn_font_minus = QPushButton("A-", self.bottom_bar)
         self.btn_font_minus.setFixedWidth(30)
         self.btn_font_minus.clicked.connect(lambda: self.adjust_font_size(-3))
@@ -241,24 +255,19 @@ class PrompterWindow(QMainWindow):
         self.btn_font_plus.setFixedWidth(30)
         self.btn_font_plus.clicked.connect(lambda: self.adjust_font_size(3))
 
-        # Mirror
-        self.btn_mirror = QPushButton("🪞 Ayna", self.bottom_bar)
+        self.btn_mirror = QPushButton(self.bottom_bar)
         self.btn_mirror.clicked.connect(self.canvas.toggle_mirror_h)
 
-        # Opacity slider (0% - 100%) -> Varsayılan %15 (Cam gibi şeffaf)
-        self.opacity_lbl = QLabel("Şeffaflık:", self.bottom_bar)
+        self.opacity_lbl = QLabel(self.bottom_bar)
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal, self.bottom_bar)
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(15)
         self.opacity_slider.setFixedWidth(70)
-        self.opacity_slider.setToolTip("Arka plan şeffaflığı (0% = Arkadaki ekran tamamen görünür)")
         self.opacity_slider.valueChanged.connect(self._on_opacity_change)
 
-        # Progress Counter
         self.progress_lbl = QLabel("0 / 0", self.bottom_bar)
         self.progress_lbl.setStyleSheet("color: #00F0FF; font-weight: bold;")
 
-        # Size grip
         self.size_grip = QSizeGrip(self.bottom_bar)
         self.size_grip.setFixedSize(14, 14)
 
@@ -274,11 +283,65 @@ class PrompterWindow(QMainWindow):
         self.bottom_layout.addWidget(self.progress_lbl)
         self.bottom_layout.addWidget(self.size_grip)
 
-        # Assemble layout
         self.card_layout.addWidget(self.header_bar)
         self.card_layout.addWidget(self.canvas, 1)
         self.card_layout.addWidget(self.bottom_bar)
         self.central_layout.addWidget(self.card_frame)
+
+    def retranslate_ui(self):
+        """Updates all strings according to active language."""
+        t = I18nManager.t
+        lang = I18nManager.get_language()
+        
+        self.setWindowTitle(t("app_title"))
+        self.btn_lang_toggle.setText("🇹🇷 TR" if lang == "tr" else "🇺🇸 EN")
+        
+        self.stealth_badge.setText(t("stealth_hidden") if self.is_stealth_active else t("stealth_visible"))
+        self.stealth_badge.setToolTip(t("stealth_tip"))
+        
+        self.click_through_badge.setText(t("click_through_on") if self.is_click_through else t("click_through_off"))
+        self.click_through_badge.setToolTip(t("click_through_tip"))
+        
+        self.btn_top_banner.setText(t("normal_size_btn") if self.is_top_banner_mode else t("top_banner_btn"))
+        self.btn_top_banner.setToolTip(t("top_banner_tip"))
+        
+        self.status_lbl.setText(t("status_waiting"))
+        
+        self.btn_editor.setToolTip(t("btn_editor_tip"))
+        self.btn_pin.setToolTip(t("btn_pin_tip"))
+        self.btn_min.setToolTip(t("btn_min_tip"))
+        self.btn_close.setToolTip(t("btn_close_tip"))
+        
+        self.btn_mode.setText(t("mode_manual") if self.canvas.is_manual_mode else t("mode_voice"))
+        self.btn_mode.setToolTip(t("mode_tip"))
+        self.btn_play_pause.setToolTip(t("btn_play_pause_tip"))
+        
+        self.btn_reset.setText(t("btn_reset"))
+        self.btn_reset.setToolTip(t("btn_reset_tip"))
+        
+        self.btn_font_minus.setToolTip(t("btn_font_minus_tip"))
+        self.btn_font_plus.setToolTip(t("btn_font_plus_tip"))
+        
+        self.btn_mirror.setText(t("btn_mirror"))
+        self.btn_mirror.setToolTip(t("btn_mirror_tip"))
+        
+        self.opacity_lbl.setText(t("lbl_opacity"))
+        self.opacity_slider.setToolTip(t("opacity_tip"))
+
+    def toggle_language(self):
+        """Switches between Turkish (tr) and English (en)."""
+        new_lang = "en" if I18nManager.get_language() == "tr" else "tr"
+        self.set_language(new_lang)
+
+    def set_language(self, lang_code: str):
+        I18nManager.set_language(lang_code)
+        
+        # Switch voice engine language
+        target_voice_lang = "en-US" if lang_code == "en" else "tr-TR"
+        self.voice_engine.set_language(target_voice_lang)
+        
+        self.retranslate_ui()
+        self.language_switched.emit(lang_code)
 
     def _create_icon_btn(self, text: str, tooltip: str, callback, is_close: bool = False) -> QPushButton:
         btn = QPushButton(text, self.header_bar)
@@ -330,8 +393,9 @@ class PrompterWindow(QMainWindow):
         hwnd = int(self.winId())
         success = stealth.set_stealth_mode(hwnd, enable)
         self.is_stealth_active = enable and success
+        t = I18nManager.t
         if self.is_stealth_active:
-            self.stealth_badge.setText("🛡️ Kayıtta Gizli")
+            self.stealth_badge.setText(t("stealth_hidden"))
             self.stealth_badge.setStyleSheet("""
                 QPushButton {
                     background-color: rgba(0, 240, 255, 0.2);
@@ -344,7 +408,7 @@ class PrompterWindow(QMainWindow):
                 }
             """)
         else:
-            self.stealth_badge.setText("👁️ Kayıtta Görünür")
+            self.stealth_badge.setText(t("stealth_visible"))
             self.stealth_badge.setStyleSheet("""
                 QPushButton {
                     background-color: rgba(255, 165, 0, 0.2);
@@ -361,13 +425,13 @@ class PrompterWindow(QMainWindow):
         self.apply_stealth_mode(not self.is_stealth_active)
 
     def toggle_click_through(self):
-        """Toggles mouse click-through so mouse clicks directly into the browser/app behind."""
         self.is_click_through = not self.is_click_through
         hwnd = int(self.winId())
         stealth.set_click_through(hwnd, self.is_click_through)
+        t = I18nManager.t
         
         if self.is_click_through:
-            self.click_through_badge.setText("🔓 Arkaya Tıkla: AÇIK (F8)")
+            self.click_through_badge.setText(t("click_through_on"))
             self.click_through_badge.setStyleSheet("""
                 QPushButton {
                     background-color: rgba(0, 255, 163, 0.25);
@@ -379,9 +443,9 @@ class PrompterWindow(QMainWindow):
                     font-weight: bold;
                 }
             """)
-            self.status_lbl.setText("🔓 Fareniz arkadaki uygulamaya tıklar (Kapatmak için F8)")
+            self.status_lbl.setText(t("status_click_through"))
         else:
-            self.click_through_badge.setText("🖱️ Arkaya Tıkla (F8)")
+            self.click_through_badge.setText(t("click_through_off"))
             self.click_through_badge.setStyleSheet("""
                 QPushButton {
                     background-color: rgba(255, 255, 255, 0.1);
@@ -393,12 +457,12 @@ class PrompterWindow(QMainWindow):
                     font-weight: bold;
                 }
             """)
-            self.status_lbl.setText("🎤 Konuşmanız bekleniyor...")
+            self.status_lbl.setText(t("status_waiting"))
 
     def toggle_top_banner_mode(self):
-        """Positions prompter as a slim banner right under webcam at top of screen."""
         self.is_top_banner_mode = not self.is_top_banner_mode
         screen = QGuiApplication.primaryScreen().availableGeometry()
+        t = I18nManager.t
         
         if self.is_top_banner_mode:
             self.saved_normal_geo = self.geometry()
@@ -407,13 +471,13 @@ class PrompterWindow(QMainWindow):
             banner_x = int((screen.width() - banner_w) / 2)
             banner_y = screen.top() + 6
             self.setGeometry(banner_x, banner_y, banner_w, banner_h)
-            self.btn_top_banner.setText("📱 Normal Boyut")
+            self.btn_top_banner.setText(t("normal_size_btn"))
         else:
             if self.saved_normal_geo:
                 self.setGeometry(self.saved_normal_geo)
             else:
                 self.resize(860, 480)
-            self.btn_top_banner.setText("📏 Kamera Çubuğu")
+            self.btn_top_banner.setText(t("top_banner_btn"))
 
     def toggle_always_on_top(self):
         self.is_always_on_top = not self.is_always_on_top
@@ -430,16 +494,17 @@ class PrompterWindow(QMainWindow):
 
     def toggle_voice_manual_mode(self):
         self.canvas.is_manual_mode = not self.canvas.is_manual_mode
+        t = I18nManager.t
         if self.canvas.is_manual_mode:
-            self.btn_mode.setText("⌨️ Manuel Hız")
+            self.btn_mode.setText(t("mode_manual"))
             self.btn_mode.setStyleSheet("background-color: #A371F7; color: #FFFFFF; font-weight: bold;")
             self.voice_engine.pause()
-            self.status_lbl.setText("⌨️ Manuel akış modu")
+            self.status_lbl.setText(t("status_manual"))
         else:
-            self.btn_mode.setText("🎤 Ses Takipli")
+            self.btn_mode.setText(t("mode_voice"))
             self.btn_mode.setStyleSheet("background-color: #00F0FF; color: #0B0E14; font-weight: bold;")
             self.voice_engine.resume()
-            self.status_lbl.setText("🎤 Konuşmanız bekleniyor...")
+            self.status_lbl.setText(t("status_waiting"))
 
     def toggle_play_pause(self):
         self.canvas.is_playing = not self.canvas.is_playing
@@ -473,7 +538,6 @@ class PrompterWindow(QMainWindow):
         """)
 
     def _on_speech_recognized(self, phrase: str):
-        """Advances prompter ONLY when words are actually recognized."""
         if not self.canvas.is_playing or self.canvas.is_manual_mode:
             return
 

@@ -1,7 +1,7 @@
 """
 Main Application Entrypoint
-Ulusoy Digital - Muzaffer Ulusoy Teleprompter
-Windows Stealth & Voice-Follow Teleprompter
+Ulusoy Digital - GhostPrompter
+Full Bilingual Support (Turkish 🇹🇷 & English 🇺🇸)
 """
 
 import sys
@@ -12,30 +12,31 @@ from PyQt6.QtCore import Qt
 from word_matcher import WordMatcher
 from voice_engine import VoiceEngine
 from prompter_window import PrompterWindow
-from editor_window import EditorWindow, SAMPLE_SCRIPTS
+from editor_window import EditorWindow
+from i18n import I18nManager
 
 
 def main():
-    # High DPI scaling
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     
     app = QApplication(sys.argv)
-    app.setApplicationName("Ulusoy Digital Prompter - Muzaffer Ulusoy")
+    app.setApplicationName("GhostPrompter - Muzaffer Ulusoy")
 
     # Initial default script
-    initial_text = SAMPLE_SCRIPTS["🎬 Ulusoy Digital - YouTube & Video Açılışı"]
-    matcher = WordMatcher(initial_text)
+    initial_samples = I18nManager.get_samples()
+    first_key = list(initial_samples.keys())[0]
+    initial_text = initial_samples[first_key]
     
-    # Voice recognition engine (defaults to Turkish tr-TR)
+    matcher = WordMatcher(initial_text)
     voice_engine = VoiceEngine(language="tr-TR")
 
     # Create windows
     prompter_win = PrompterWindow(matcher, voice_engine)
     editor_win = EditorWindow(voice_engine)
 
-    # Signal connections between Editor and Prompter
+    # Signal connections
     prompter_win.open_editor_requested.connect(lambda: (editor_win.show(), editor_win.raise_(), editor_win.activateWindow()))
     
     def on_script_applied(text: str):
@@ -48,16 +49,21 @@ def main():
         if "theme" in settings:
             prompter_win.canvas.set_theme(settings["theme"])
 
+    def on_prompter_lang_switched(lang_code: str):
+        editor_win.set_active_language(lang_code)
+
+    def on_editor_lang_switched(lang_code: str):
+        prompter_win.set_language(lang_code)
+
     editor_win.script_applied.connect(on_script_applied)
     editor_win.settings_changed.connect(on_settings_changed)
+    editor_win.ui_language_changed.connect(on_editor_lang_switched)
+    prompter_win.language_switched.connect(on_prompter_lang_switched)
 
     # Show windows
     prompter_win.show()
-    
-    # Start microphone background listening
     voice_engine.start()
 
-    # Clean shutdown
     def on_app_exit():
         voice_engine.stop()
 

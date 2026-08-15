@@ -1,96 +1,91 @@
 # 👻 GhostPrompter
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Yazar-Muzaffer%20Ulusoy-00F0FF?style=for-the-badge" alt="Yazar">
-  <img src="https://img.shields.io/badge/Marka-Ulusoy%20Digital-7928CA?style=for-the-badge" alt="Marka">
+  <img src="https://img.shields.io/badge/Author-Muzaffer%20Ulusoy-00F0FF?style=for-the-badge" alt="Author">
+  <img src="https://img.shields.io/badge/Brand-Ulusoy%20Digital-7928CA?style=for-the-badge" alt="Brand">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?style=for-the-badge&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
-  <img src="https://img.shields.io/badge/Lisans-MIT-success?style=for-the-badge" alt="Lisans">
+  <img src="https://img.shields.io/badge/Language-English%20%2F%20T%C3%BCrk%C3%A7e-success?style=for-the-badge" alt="Language">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
 </p>
 
 <p align="center">
-  <b>🎙️ Ekran kaydı alırken mikrofondan sesinizi kelime kelime takip eden ve video kaydında (OBS, Loom, Zoom, Game Bar vb.) %100 görünmez olan profesyonel yeni nesil Teleprompter.</b>
+  <b>🎙️ Next-Gen Voice-Activated & Screen-Recorder-Invisible Teleprompter for Windows.</b><br>
+  <i>Follows your speech word-by-word with zero latency (sub-30ms) while remaining 100% invisible in screen recordings (OBS, Loom, Zoom, Teams, Camtasia, Windows Game Bar).</i>
 </p>
 
 <p align="center">
-  🌐 <b>Web Sitesi:</b> <a href="https://ulusoydigital.com">ulusoydigital.com</a> &nbsp;|&nbsp; 
-  👤 <b>Geliştirici:</b> <a href="https://github.com/muqo16">Muzaffer Ulusoy (@muqo16)</a>
+  🌐 <b>Website:</b> <a href="https://ulusoydigital.com">ulusoydigital.com</a> &nbsp;|&nbsp; 
+  👤 <b>Developer:</b> <a href="https://github.com/muqo16">Muzaffer Ulusoy (@muqo16)</a>
 </p>
 
 ---
 
-## 🌟 Neden GhostPrompter?
-
-Bir video, eğitim veya canlı sunum kaydederken prompter kullanmak istersiniz ancak prompter penceresinin videoda veya ekran paylaşımında görünmesini istemezsiniz. **GhostPrompter**, Windows işletim sisteminin doğrudan grafik katmanına entegre olarak bu sorunu çözer.
-
-* 🛡️ **Kayıtta %100 Görünmezlik (Stealth Mode)**: Monitörünüzde prompterı rahatça okursunuz; ancak **OBS Studio, Loom, Camtasia, Zoom, Discord, Teams veya Windows Ekran Alıntısı Aracı** prompterı tamamen yok sayarak arkasındaki masaüstünü/uygulamayı kaydeder.
-* 🎤 **Akıllı Ses Takibi (Voice-Follow & Karaoke Sync)**: Siz mikrofona konuştukça sesinizi gerçek zamanlı dinler, okuduğunuz kelimeleri neon ışıkla parlatır ve metni konuşma temponuza göre 60 FPS akıcılıkla otomatik kaydırır.
-* 🎯 **Göz Hizası Lazer Kılavuzu**: Tam kamera lensine bakarak doğal konuşabilmeniz için okuma çizgisi.
-* 🌓 **Şeffaflık & Ayna Modu**: Şeffaf arka plan desteği ve fiziksel yansıtmalı prompter camları için tek tuşla (`M`) yatay ters çevirme.
+## 🌍 Language / Dil Seçimi
+* [English (Global)](#-english-documentation)
+* [Türkçe (Dokümantasyon)](#-türkçe-dokümantasyon)
 
 ---
 
-## 🚀 Hızlı Başlangıç
+# 🇺🇸 English Documentation
 
-### 1. Yöntem: Tek Tıkla Başlatma (Tavsiye Edilen)
-Projeyi indirdikten sonra klasördeki **`run.bat`** dosyasına çift tıklayarak GhostPrompter'ı anında başlatabilirsiniz.
+### ✨ Key Features
 
-### 2. Yöntem: Terminal ile Çalıştırma
-```bash
-# 1. Depoyu klonlayın
-git clone https://github.com/muqo16/ghost-prompter.git
-cd ghost-prompter
+- **🛡️ 100% Stealth Mode (Invisible to Screen Recorders)**:
+  - Powered by Windows Native `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE = 0x11)` API.
+  - Visible and crystal-clear on your physical monitor, but **OBS Studio, Loom, Zoom screen share, MS Teams, and Windows Screen Recorder** completely ignore the window (capturing whatever is behind it).
+- **⚡ Sub-30ms Zero-Latency Voice Tracking**:
+  - Powered by local offline neural Vosk engine (supports English & Turkish).
+  - Matches spoken words in real time as you pronounce them, highlighting active words karaoke-style.
+- **🖱️ Click-Through Mode (F8 Key)**:
+  - Toggle mouse transparency with a single key. Click links, buttons, and navigate websites/apps directly behind the prompter while it floats on top and tracks your voice!
+- **📏 Slim Camera Bar Preset**:
+  - Dock prompter horizontally right under your webcam to maintain direct camera eye contact while leaving 85% of your screen open for your browser or slide deck.
+- **🪞 100% Transparent Glass & Mirror Mode**:
+  - Adjustable 0% to 100% background transparency. Full support for beam-splitter physical prompter glass (`M` key).
 
-# 2. Bağımlılıkları yükleyin
-pip install -r requirements.txt
-
-# 3. Başlatın
-python main.py
-```
-
----
-
-## ⌨️ Klavye Kısayolları
-
-| Kısayol | İşlev |
-| :--- | :--- |
-| **Boşluk (Space)** | Oynat / Duraklat |
-| **R** | Metni en başa sar (Reset) |
-| **G** | Hayalet Modunu Aç / Kapat (Kayıtta Gizle) |
-| **M** | Ayna Modu (Prompter camı için yatay çevir) |
-| **Yukarı / Aşağı Ok** | Font Boyutunu Büyüt / Küçült |
-| **Sol / Sağ Ok** | 1 Kelime Geri / İleri Git |
-| **Sol Tık (Kelime)** | Tıklanan kelimeye anında odaklan |
-| **Fare Tekerleği** | Manuel serbest kaydırma |
-| **Esc** | Simge durumuna küçült |
+### 🚀 Quick Start
+1. Double-click **`run.bat`** to start GhostPrompter immediately.
+2. Click the **`🇹🇷 TR / 🇺🇸 EN`** button on the top header to switch language.
 
 ---
 
-## 🛠️ Proje Mimarisi
+# 🇹🇷 Türkçe Dokümantasyon
 
-```
-├── main.py              # Uygulama ana başlatıcısı
-├── prompter_window.py   # Şeffaf ana GhostPrompter penceresi ve kontrol çubuğu
-├── prompter_view.py     # 60 FPS donanım hızlandırmalı metin çizim & karaoke motoru
-├── voice_engine.py      # Gerçek zamanlı mikrofon dinleme & konuşma tanıma iş parçacığı
-├── word_matcher.py      # Türkçe fonetik normalizasyon & kayan pencere eşleme algoritması
-├── stealth.py           # Windows Win32 SetWindowDisplayAffinity görünmezlik modülü
-├── editor_window.py     # Metin düzenleyici, istatistikler ve Türkçe ayarlar paneli
-├── run.bat              # Windows tek tıkla başlatıcı
-├── requirements.txt     # Python bağımlılıkları (PyQt6, SpeechRecognition, PyAudio, RapidFuzz)
-└── LICENSE              # MIT Lisansı (Muzaffer Ulusoy / Ulusoy Digital)
-```
+### ✨ Temel Özellikler
 
----
-
-## 📄 Lisans
-
-Bu proje [MIT Lisansı](LICENSE) altında lisanslanmıştır.
+- **🛡️ %100 Hayalet Modu (Ekran Kaydedicilerde Görünmezlik)**:
+  - Windows yerel `SetWindowDisplayAffinity(0x11)` API'si ile çalışır.
+  - Siz monitörünüzde net görürken; **OBS Studio, Loom, Zoom, Teams ve Windows Ekran Kaydı** prompterı tamamen yok sayar.
+- **⚡ Sıfır Gecikmeli Yerel Ses Takibi (Sub-30ms Vosk Engine)**:
+  - Tamamen bilgisayarınızda yerel çalışan yapay zeka ile konuştuğunuz kelimeleri 30 milisaniyede yakalar ve parlatır.
+- **🖱️ Arkaya Tıklama Modu (Click-Through - F8 Tuşu)**:
+  - Prompter açıkken arkadaki web sayfalarına, butonlara veya uygulamalara doğrudan tıklayabilirsiniz.
+- **📏 Kamera Çubuğu Modu**:
+  - Prompterı kameranın tam altına ince şerit olarak yerleştirir, ekranın altını tamamen açık bırakır.
+- **🌐 Çift Dil Desteği**:
+  - Tek tıkla Türkçe ve İngilizce arasında anında geçiş yapabilirsiniz.
 
 ---
 
-## 👨‍💻 Geliştirici & İletişim
+## ⌨️ Keyboard Shortcuts / Klavye Kısayolları
 
-* **Geliştirici:** Muzaffer Ulusoy
-* **GitHub:** [@muqo16](https://github.com/muqo16)
-* **Marka / Web Sitesi:** [ulusoydigital.com](https://ulusoydigital.com)
+| Shortcut / Kısayol | Function (EN) | İşlev (TR) |
+| :--- | :--- | :--- |
+| **Space / Boşluk** | Play / Pause | Oynat / Duraklat |
+| **F8** | Toggle Click-Through Mode | Arkaya Tıklama Modunu Aç/Kapat |
+| **R** | Reset Script to Beginning | Metni Başa Sar |
+| **G** | Toggle Stealth Mode | Kayıtta Gizlilik Modunu Aç/Kapat |
+| **M** | Flip Horizontal (Mirror Glass) | Ayna Modu (Prompter Camı İçin) |
+| **Up / Down Arrow** | Increase / Decrease Font Size | Font Boyutunu Büyüt / Küçült |
+| **Left / Right Arrow** | Step 1 Word Back / Forward | 1 Kelime Geri / İleri Git |
+| **Left Click (Word)** | Jump directly to clicked word | Tıklanan kelimeye anında zıpla |
+| **Esc** | Minimize to taskbar | Simge durumuna küçült |
+
+---
+
+## 👨‍💻 Developer & Brand
+
+* **Developer:** Muzaffer Ulusoy
+* **GitHub Profile:** [@muqo16](https://github.com/muqo16)
+* **Official Website:** [ulusoydigital.com](https://ulusoydigital.com)
+* **License:** [MIT License](LICENSE) (2026 Muzaffer Ulusoy)

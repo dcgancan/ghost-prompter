@@ -1,15 +1,15 @@
 """
-High-Performance 60 FPS Prompter Render Widget
-Zero-Lag Hybrid Voice Pacing + Karaoke Active Highlighting + Unlimited Text Support
+High-Performance Prompter Render Widget
+100% Transparent Background Support + High-Contrast Glowing Text + Zero Ghost Scrolling
 """
 
-import time
 from typing import List, Optional, Tuple
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtGui import (
     QPainter, QFont, QFontMetrics, QColor,
-    QLinearGradient, QPen, QBrush, QMouseEvent, QWheelEvent
+    QLinearGradient, QPen, QBrush, QMouseEvent, QWheelEvent,
+    QPainterPath
 )
 from word_matcher import WordMatcher, ScriptToken
 
@@ -29,26 +29,22 @@ class PrompterCanvas(QWidget):
         self.mirror_h = False
         self.mirror_v = False
         self.show_eyeline = True
-        self.eyeline_ratio = 0.35  # Göz hizası %35 yükseklikte
+        self.eyeline_ratio = 0.35
         
-        # Color Theme (Default: Neon Cyan)
-        self.bg_color = QColor(11, 14, 20, 240)
-        self.color_read = QColor(135, 145, 160, 95)
-        self.color_active = QColor(0, 240, 255, 255)
-        self.color_active_bg = QColor(0, 240, 255, 45)
-        self.color_unread = QColor(245, 248, 255, 245)
-        self.color_eyeline = QColor(0, 240, 255, 120)
+        # Color Theme (Default: High-Contrast Neon Cyan on Transparent Canvas)
+        # Default: 0 Alpha (Tamamen Şeffaf / Arkası %100 Görünür)
+        self.bg_color = QColor(0, 0, 0, 0)
+        self.color_read = QColor(160, 175, 195, 120)        # Okunan kelimeler
+        self.color_active = QColor(0, 245, 255, 255)        # Aktif parlayan kelime
+        self.color_active_bg = QColor(0, 240, 255, 60)     # Aktif kelime arkası neon glow
+        self.color_unread = QColor(255, 255, 255, 255)      # Yaklaşan okunacak kelimeler (Tam beyaz)
+        self.color_shadow = QColor(0, 0, 0, 230)            # Yazı okunurluğu için koyu gölge
+        self.color_eyeline = QColor(0, 240, 255, 140)       # Göz hizası lazer çizgisi
         
-        # Smooth Voice Pacing Engine ("Tak Tak Tak" Akıcılığı)
-        self.is_voice_mode = True
-        self.is_voice_speaking = False
-        self.is_playing = True
-        self.words_per_minute = 140.0         # Okuma hızı (WPM)
-        self.last_voice_step_time = time.time()
-        
-        # Manual Mode Settings
+        # State
         self.is_manual_mode = False
-        self.manual_speed = 3.2
+        self.is_playing = True
+        self.manual_speed = 3.0
         
         # Scrolling interpolation
         self.current_scroll_y = 0.0
@@ -58,55 +54,50 @@ class PrompterCanvas(QWidget):
         self.token_rects: List[Tuple[int, QRectF]] = []
         self.total_content_height = 0.0
         
-        # 60 FPS animation timer
+        # 60 FPS animation timer for camera easing
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._on_animation_frame)
-        self.anim_timer.start(16)  # ~60 FPS
+        self.anim_timer.start(16)
         
         self.setMouseTracking(True)
         self.recompute_layout()
 
     def set_theme(self, theme_name: str):
         if theme_name == "Cyan":
-            self.color_active = QColor(0, 240, 255, 255)
-            self.color_active_bg = QColor(0, 240, 255, 45)
-            self.color_eyeline = QColor(0, 240, 255, 120)
+            self.color_active = QColor(0, 245, 255, 255)
+            self.color_active_bg = QColor(0, 240, 255, 60)
+            self.color_eyeline = QColor(0, 240, 255, 140)
         elif theme_name == "Gold":
             self.color_active = QColor(255, 215, 0, 255)
-            self.color_active_bg = QColor(255, 215, 0, 45)
-            self.color_eyeline = QColor(255, 215, 0, 120)
+            self.color_active_bg = QColor(255, 215, 0, 60)
+            self.color_eyeline = QColor(255, 215, 0, 140)
         elif theme_name == "Emerald":
             self.color_active = QColor(0, 255, 163, 255)
-            self.color_active_bg = QColor(0, 255, 163, 45)
-            self.color_eyeline = QColor(0, 255, 163, 120)
+            self.color_active_bg = QColor(0, 255, 163, 60)
+            self.color_eyeline = QColor(0, 255, 163, 140)
         elif theme_name == "Classic White":
             self.color_active = QColor(255, 255, 255, 255)
-            self.color_active_bg = QColor(255, 255, 255, 50)
-            self.color_eyeline = QColor(255, 255, 255, 100)
+            self.color_active_bg = QColor(255, 255, 255, 70)
+            self.color_eyeline = QColor(255, 255, 255, 120)
         self.update()
 
     def set_font_size(self, size: int):
-        self.font_size = max(16, min(72, size))
+        self.font_size = max(18, min(76, size))
         self.recompute_layout()
         self.update()
 
     def set_bg_opacity(self, alpha_percent: int):
+        """0% = Tamamen şeffaf (arkası kristal netliğinde), 100% = Katı siyah."""
         alpha = int(255 * (alpha_percent / 100.0))
-        self.bg_color.setAlpha(alpha)
+        self.bg_color = QColor(10, 13, 18, alpha)
         self.update()
 
     def toggle_mirror_h(self):
         self.mirror_h = not self.mirror_h
         self.update()
 
-    def set_speaking_active(self, active: bool):
-        """Called by VoiceEngine VAD."""
-        self.is_voice_speaking = active
-        if active:
-            self.last_voice_step_time = time.time()
-
     def recompute_layout(self):
-        """Calculates exact x, y, width, height for all tokens without length limits."""
+        """Calculates exact positions for all tokens."""
         self.token_rects.clear()
         if not self.matcher or not self.matcher.tokens:
             self.total_content_height = 0
@@ -115,9 +106,9 @@ class PrompterCanvas(QWidget):
         font = QFont(self.font_family, self.font_size, QFont.Weight.Bold)
         fm = QFontMetrics(font)
         
-        margin_x = 36.0
-        margin_y = 50.0
-        usable_width = max(200.0, float(self.width()) - (margin_x * 2))
+        margin_x = 30.0
+        margin_y = 45.0
+        usable_width = max(180.0, float(self.width()) - (margin_x * 2))
         
         line_height = fm.height() * self.line_spacing
         space_width = fm.horizontalAdvance(" ")
@@ -150,11 +141,10 @@ class PrompterCanvas(QWidget):
         self.recompute_layout()
 
     def update_active_word(self, index: int):
-        """Dispatched when voice recognizer matches a word."""
+        """Advances active word ONLY when speech is recognized or word clicked."""
         self.matcher.set_index(index)
         self.progress_changed.emit(self.matcher.current_index, self.matcher.total_words)
         self._update_target_scroll()
-        self.last_voice_step_time = time.time()
         self.update()
 
     def _update_target_scroll(self):
@@ -170,27 +160,13 @@ class PrompterCanvas(QWidget):
             self.target_scroll_y = max(0.0, self.total_content_height - self.height())
 
     def _on_animation_frame(self):
-        """60 FPS interpolation and live continuous pacing."""
-        now = time.time()
-        
-        # 1. Voice-Activated Continuous Pacer ("Tak Tak Tak" Akışı)
-        if not self.is_manual_mode and self.is_playing and self.is_voice_speaking:
-            step_interval = 60.0 / max(60.0, self.words_per_minute)  # Saniye başına kelime adımı
-            if now - self.last_voice_step_time >= step_interval:
-                self.last_voice_step_time = now
-                if self.matcher.current_index < self.matcher.total_words - 1:
-                    self.matcher.advance_by(1)
-                    self.progress_changed.emit(self.matcher.current_index, self.matcher.total_words)
-                    self._update_target_scroll()
-
-        # 2. Manual constant-speed mode
-        elif self.is_manual_mode and self.is_playing:
+        """Only scrolls if in manual mode or interpolating to matched word."""
+        if self.is_manual_mode and self.is_playing:
             self.target_scroll_y += self.manual_speed
 
-        # 3. Smooth Camera Easing (60 FPS)
         diff = self.target_scroll_y - self.current_scroll_y
-        if abs(diff) > 0.25:
-            self.current_scroll_y += diff * 0.14
+        if abs(diff) > 0.3:
+            self.current_scroll_y += diff * 0.16
             self.update()
         elif diff != 0:
             self.current_scroll_y = self.target_scroll_y
@@ -201,8 +177,9 @@ class PrompterCanvas(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        # 1. Arka Plan
-        painter.fillRect(self.rect(), self.bg_color)
+        # 1. Arka Plan (Şeffaf veya Opak)
+        if self.bg_color.alpha() > 0:
+            painter.fillRect(self.rect(), self.bg_color)
 
         if self.mirror_h or self.mirror_v:
             painter.save()
@@ -218,17 +195,17 @@ class PrompterCanvas(QWidget):
         if self.show_eyeline:
             grad = QLinearGradient(0, eyeline_y, self.width(), eyeline_y)
             grad.setColorAt(0.0, QColor(0, 0, 0, 0))
-            grad.setColorAt(0.12, self.color_eyeline)
+            grad.setColorAt(0.1, self.color_eyeline)
             grad.setColorAt(0.5, self.color_eyeline)
-            grad.setColorAt(0.88, self.color_eyeline)
+            grad.setColorAt(0.9, self.color_eyeline)
             grad.setColorAt(1.0, QColor(0, 0, 0, 0))
             
-            pen = QPen(QBrush(grad), 1.5, Qt.PenStyle.DashLine)
+            pen = QPen(QBrush(grad), 2.0, Qt.PenStyle.DashLine)
             painter.setPen(pen)
-            painter.drawLine(QPointF(15, eyeline_y), QPointF(self.width() - 15, eyeline_y))
+            painter.drawLine(QPointF(10, eyeline_y), QPointF(self.width() - 10, eyeline_y))
 
-        # 3. Kelimeleri Çiz (Sınırsız Metin & Hızlı Viewport Filtreleme)
-        font = QFont(self.font_family, self.font_size, QFont.Weight.DemiBold)
+        # 3. Metin Çizimi (Yüksek Kontrast & Gölgelendirme)
+        font = QFont(self.font_family, self.font_size, QFont.Weight.Bold)
         painter.setFont(font)
         
         cur_idx = self.matcher.current_index
@@ -242,20 +219,25 @@ class PrompterCanvas(QWidget):
             token = self.matcher.tokens[token_idx]
             draw_rect = QRectF(rect.x(), rect.y() - self.current_scroll_y, rect.width(), rect.height())
             
+            # Yazı arkasında kontrast gölgesi (Arkadaki açık renkli web sayfalarında bile net okunabilmesi için)
+            shadow_rect = QRectF(draw_rect.x() + 2, draw_rect.y() + 2, draw_rect.width(), draw_rect.height())
+            painter.setPen(self.color_shadow)
+            painter.drawText(shadow_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, token.original_text)
+
             if token_idx < cur_idx:
                 painter.setPen(self.color_read)
                 painter.drawText(draw_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, token.original_text)
             elif token_idx == cur_idx:
                 # Aktif Kelime - Parlayan Neon Pill
-                glow_pad_x = 6.0
-                glow_pad_y = 3.0
+                glow_pad_x = 7.0
+                glow_pad_y = 4.0
                 pill_rect = QRectF(
                     draw_rect.x() - glow_pad_x,
                     draw_rect.y() - glow_pad_y,
                     draw_rect.width() + (glow_pad_x * 2),
                     draw_rect.height() + (glow_pad_y * 2)
                 )
-                painter.setPen(QPen(self.color_active, 1.5))
+                painter.setPen(QPen(self.color_active, 1.8))
                 painter.setBrush(self.color_active_bg)
                 painter.drawRoundedRect(pill_rect, 6.0, 6.0)
                 

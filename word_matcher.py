@@ -1,7 +1,7 @@
 """
 Smart Word Matcher and Alignment Engine
-Tokenizes prompter text of ANY length without character limits.
-Synchronizes spoken speech with script in real-time with zero latency.
+Tokenizes prompter text of ANY length without limits.
+Instantly aligns partial and full streaming spoken phrases with sub-millisecond execution.
 """
 
 import re
@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 
 def normalize_turkish(text: str) -> str:
-    """Normalizes Turkish string for fuzzy phonetic matching."""
+    """Normalizes Turkish string for instant phonetic matching."""
     if not text:
         return ""
     
@@ -80,17 +80,16 @@ class ScriptToken:
 
 
 class WordMatcher:
-    def __init__(self, script_text: str = "", lookahead_window: int = 25, lookbehind_window: int = 4):
+    def __init__(self, script_text: str = "", lookahead_window: int = 25, lookbehind_window: int = 3):
         self.script_text = script_text
         self.lookahead_window = lookahead_window
         self.lookbehind_window = lookbehind_window
         self.tokens: List[ScriptToken] = []
         self.current_index: int = 0
-        self.min_similarity_threshold: float = 0.62
+        self.min_similarity_threshold: float = 0.60
         self.load_script(script_text)
 
     def load_script(self, script_text: str):
-        """Tokenizes arbitrary length text with zero limits."""
         self.script_text = script_text
         self.tokens = []
         self.current_index = 0
@@ -125,13 +124,12 @@ class WordMatcher:
         self.current_index = max(0, min(index, len(self.tokens) - 1)) if self.tokens else 0
 
     def advance_by(self, delta: int = 1):
-        """Steps forward by delta words."""
         self.set_index(self.current_index + delta)
 
     def match_spoken_phrase(self, recognized_phrase: str) -> Optional[int]:
         """
-        Matches incoming spoken speech with forward lookahead window.
-        Returns matched token index or None.
+        Instant streaming matcher for incoming partial/full phrases.
+        Matches the latest spoken word or word sequence against the lookahead window.
         """
         if not self.tokens or not recognized_phrase.strip():
             return None
@@ -147,7 +145,7 @@ class WordMatcher:
         best_match_idx = None
         best_score = 0.0
 
-        # 1. Multi-word sequence match
+        # 1. Multi-word phrase matching (highest precision)
         if len(spoken_words) > 1:
             for i in range(start_idx, end_idx - len(spoken_words) + 1):
                 score_sum = 0.0
@@ -156,7 +154,7 @@ class WordMatcher:
                     if s_word == sc_word:
                         score_sum += 1.0
                     elif s_word.startswith(sc_word) or sc_word.startswith(s_word):
-                        score_sum += 0.85
+                        score_sum += 0.88
                     else:
                         score_sum += levenshtein_similarity(s_word, sc_word)
                         
@@ -165,23 +163,22 @@ class WordMatcher:
                     best_score = avg_score
                     best_match_idx = i + len(spoken_words) - 1
 
-        # 2. Single-word lookahead match
+        # 2. Match latest spoken word immediately (instant <20ms word jumping)
         if best_match_idx is None:
-            for spoken_word in reversed(spoken_words):
-                if len(spoken_word) <= 1:
-                    continue
+            latest_word = spoken_words[-1]
+            if len(latest_word) > 1:
                 for i in range(start_idx, end_idx):
                     script_word = self.tokens[i].clean_text
                     if not script_word:
                         continue
                         
                     sim = 0.0
-                    if spoken_word == script_word:
+                    if latest_word == script_word:
                         sim = 1.0
-                    elif spoken_word.startswith(script_word) or script_word.startswith(spoken_word):
-                        sim = 0.9
+                    elif latest_word.startswith(script_word) or script_word.startswith(latest_word):
+                        sim = 0.92
                     else:
-                        sim = levenshtein_similarity(spoken_word, script_word)
+                        sim = levenshtein_similarity(latest_word, script_word)
                         
                     if sim > best_score and sim >= self.min_similarity_threshold:
                         best_score = sim

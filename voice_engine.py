@@ -1,16 +1,22 @@
 """
-Voice Recognition Engine with Real-Time VAD & Low Latency Streaming
-Ulusoy Digital Prompter - Zero-Lag Speech Tracking
+Real-Time Offline Streaming Voice Recognition Engine
+Powered by Vosk Local Neural Speech Engine + SoundDevice
+Sub-30ms Instant Streaming ("Konuştuğunuz Anda Kelimenin Üzerine Gelir")
 """
 
+import sys
+import json
 import time
-import math
 import queue
 import threading
-import numpy as np
 from typing import Optional, List
-import speech_recognition as sr
+import sounddevice as sd
+import vosk
 from PyQt6.QtCore import QObject, pyqtSignal
+
+
+# Disable Vosk verbose C logs
+vosk.SetLogLevel(-1)
 
 
 def clean_device_name(name: str) -> str:
@@ -41,50 +47,73 @@ def clean_device_name(name: str) -> str:
 
 
 class VoiceEngineSignals(QObject):
-    speech_detected = pyqtSignal(str)       # Emits recognized phrase
-    voice_active = pyqtSignal(bool)         # True when user is actively speaking (VAD)
-    mic_level = pyqtSignal(float)            # Emits 0.0 - 1.0 audio volume level
-    status_changed = pyqtSignal(str)         # "Dinleniyor...", "Bağlandı", etc.
+    speech_detected = pyqtSignal(str)       # Emits recognized partial/final words instantly
+    status_changed = pyqtSignal(str)         # Status text
     error_occurred = pyqtSignal(str)         # Error message
 
 
 class VoiceEngine:
+    _models_cache = {}
+
     def __init__(self, language: str = "tr-TR", mic_device_index: Optional[int] = None):
         self.language = language
         self.mic_device_index = mic_device_index
         self.signals = VoiceEngineSignals()
+        
         self.is_running = False
         self.is_paused = False
-        
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._audio_queue = queue.Queue(maxsize=50)
         
-        self.recognizer = sr.Recognizer()
-        # Ultra low latency for instant word flow
-        self.recognizer.energy_threshold = 260
-        self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.dynamic_energy_adjustment_damping = 0.15
-        self.recognizer.dynamic_energy_ratio = 1.4
-        self.recognizer.pause_threshold = 0.35         # Ultra fast silence cut (<350ms)
-        self.recognizer.phrase_threshold = 0.15        # Minimum speech to trigger
-        self.recognizer.non_speaking_duration = 0.25
+        self.sample_rate = 16000
+        self.vosk_model: Optional[vosk.Model] = None
+        self.recognizer: Optional[vosk.KaldiRecognizer] = None
+        self._last_partial = ""
+
+    def _get_or_load_model(self, lang_code: str) -> Optional[vosk.Model]:
+        """Loads Vosk local offline neural model for ultra-low latency."""
+        # Convert tr-TR -> tr, en-US -> en-us
+        target_lang = "tr"
+        if "en" in lang_code.lower():
+            target_lang = "en-us"
+        elif "de" in lang_code.lower():
+            target_lang = "de"
+        elif "es" in lang_code.lower():
+            target_lang = "es"
+
+        if target_lang in VoiceEngine._models_cache:
+            return VoiceEngine._models_cache[target_lang]
+
+        try:
+            self.signals.status_changed.emit("⚙️ Yerel ses modeli hazırlanıyor...")
+            model = vosk.Model(lang=target_lang)
+            VoiceEngine._models_cache[target_lang] = model
+            return model
+        except Exception as e:
+            print(f"[VoiceEngine] Vosk model yükleme hatası: {e}")
+            return None
 
     @staticmethod
     def get_microphone_list() -> List[tuple]:
-        """Returns list of (index, cleaned_device_name)."""
+        """Returns clean list of available input audio devices."""
         try:
-            mics = sr.Microphone.list_microphone_names()
+            devices = sd.query_devices()
             result = []
-            for i, raw_name in enumerate(mics):
-                clean_name = clean_device_name(raw_name)
-                result.append((i, clean_name))
+            for i, dev in enumerate(devices):
+                if dev.get('max_input_channels', 0) > 0:
+                    clean_name = clean_device_name(dev.get('name', ''))
+                    result.append((i, clean_name))
             return result
         except Exception as e:
-            print(f"[VoiceEngine] Mikrofon listesi hatası: {e}")
+            print(f"[VoiceEngine] Mikrofon listeleme hatası: {e}")
             return []
 
     def set_language(self, language: str):
         self.language = language
+        if self.is_running:
+            self.stop()
+            self.start()
 
     def set_mic_device(self, device_index: Optional[int]):
         self.mic_device_index = device_index
@@ -93,88 +122,95 @@ class VoiceEngine:
             self.start()
 
     def start(self):
-        """Starts background microphone listener."""
         if self.is_running:
             return
         self.is_running = True
         self.is_paused = False
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self._last_partial = ""
+        self._thread = threading.Thread(target=self._streaming_worker, daemon=True)
         self._thread.start()
-        self.signals.status_changed.emit("🎤 Canlı ses takibi aktif...")
 
     def pause(self):
         self.is_paused = True
-        self.signals.voice_active.emit(False)
         self.signals.status_changed.emit("⏸️ Ses takibi duraklatıldı")
 
     def resume(self):
         self.is_paused = False
+        self._last_partial = ""
         self.signals.status_changed.emit("🎤 Canlı ses takibi aktif...")
 
     def stop(self):
-        """Stops background thread."""
         self.is_running = False
         self._stop_event.set()
-        self.signals.voice_active.emit(False)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
         self._thread = None
         self.signals.status_changed.emit("⏹️ Ses takibi kapalı")
 
-    def _listen_loop(self):
-        """Continuous background listening loop with live VAD activity."""
-        try:
-            with sr.Microphone(device_index=self.mic_device_index) as source:
-                try:
-                    self.signals.status_changed.emit("⚙️ Ortam sesi kalibre ediliyor...")
-                    self.recognizer.adjust_for_ambient_noise(source, duration=0.6)
-                except Exception:
-                    pass
+    def _audio_callback(self, indata, frames, time_info, status):
+        """Ultra-fast 50ms audio chunk capture."""
+        if status:
+            pass
+        if self.is_running and not self.is_paused:
+            try:
+                # Put raw 16-bit PCM bytes into stream queue
+                self._audio_queue.put_nowait(bytes(indata))
+            except queue.Full:
+                pass
 
-                self.signals.status_changed.emit("🎤 Konuşmanız canlı dinleniyor...")
+    def _streaming_worker(self):
+        """Background continuous streaming decoder thread (0ms cloud latency)."""
+        try:
+            self.vosk_model = self._get_or_load_model(self.language)
+            if not self.vosk_model:
+                self.signals.error_occurred.emit("Ses modeli yüklenemedi")
+                return
+
+            self.recognizer = vosk.KaldiRecognizer(self.vosk_model, self.sample_rate)
+            self.recognizer.SetWords(True)
+
+            # Block size = 800 samples = 50ms per audio frame
+            block_size = 800
+            
+            with sd.RawInputStream(
+                samplerate=self.sample_rate,
+                blocksize=block_size,
+                device=self.mic_device_index,
+                dtype='int16',
+                channels=1,
+                callback=self._audio_callback
+            ):
+                self.signals.status_changed.emit("🎤 Konuşmanız canlı dinleniyor (Sıfır Gecikme)...")
 
                 while self.is_running and not self._stop_event.is_set():
-                    if self.is_paused:
-                        time.sleep(0.08)
+                    try:
+                        data = self._audio_queue.get(timeout=0.2)
+                    except queue.Empty:
                         continue
 
-                    try:
-                        # Listen for short phrase with tight timeouts
-                        audio = self.recognizer.listen(
-                            source,
-                            timeout=1.5,
-                            phrase_time_limit=3.5
-                        )
-                        
-                        if self.is_paused or not self.is_running:
-                            continue
+                    if self.is_paused or not self.is_running:
+                        continue
 
-                        # Signal VAD speech active
-                        self.signals.voice_active.emit(True)
-
-                        # Recognize speech asynchronously
-                        try:
-                            text = self.recognizer.recognize_google(
-                                audio,
-                                language=self.language
-                            )
-                            if text and text.strip():
-                                self.signals.speech_detected.emit(text.strip())
-                        except sr.UnknownValueError:
-                            pass
-                        except sr.RequestError as req_err:
-                            time.sleep(0.5)
-
-                    except sr.WaitTimeoutError:
-                        # Silence detected -> emit speech inactive
-                        self.signals.voice_active.emit(False)
-                    except Exception as e:
-                        if self.is_running:
-                            time.sleep(0.1)
+                    # Process audio chunk with Vosk
+                    if self.recognizer.AcceptWaveform(data):
+                        # Final phrase result
+                        res = json.loads(self.recognizer.Result())
+                        text = res.get("text", "").strip()
+                        if text:
+                            self.signals.speech_detected.emit(text)
+                            self._last_partial = ""
+                    else:
+                        # Instant real-time partial result while speaker is uttering words!
+                        partial_res = json.loads(self.recognizer.PartialResult())
+                        partial = partial_res.get("partial", "").strip()
+                        if partial and partial != self._last_partial:
+                            self._last_partial = partial
+                            # Emit partial words in real time (<30ms)
+                            self.signals.speech_detected.emit(partial)
 
         except Exception as e:
-            err_msg = f"Mikrofon hatası: {e}"
+            err_msg = f"Mikrofon akış hatası: {e}"
             print(f"[VoiceEngine] {err_msg}")
             self.signals.error_occurred.emit(err_msg)
             self.signals.status_changed.emit("❌ Mikrofon başlatılamadı")

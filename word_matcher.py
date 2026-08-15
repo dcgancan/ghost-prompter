@@ -127,17 +127,24 @@ class WordMatcher:
         self.current_index = 0
 
     def set_index(self, index: int):
-        self.current_index = max(0, min(index, len(self.tokens) - 1)) if self.tokens else 0
+        # current_index is a cursor: it points at the word to be read next.
+        # Keeping ``len(tokens)`` as a valid value lets the UI represent a
+        # completed script (all words are marked read) without re-highlighting
+        # the final word.
+        self.current_index = max(0, min(index, len(self.tokens))) if self.tokens else 0
 
     def advance_by(self, delta: int = 1):
         self.set_index(self.current_index + delta)
 
     def match_spoken_phrase(self, recognized_phrase: str) -> Optional[int]:
         """
-        Ultra-stable sequential matching:
-        - Strongly favors the immediate next words (index + 1, index + 2).
-        - Penalizes distant candidates so it NEVER jumps far ahead.
-        - Multi-word confirmation required for larger leaps.
+        Match Vosk's growing partial phrase against the upcoming script.
+
+        A fast speaker commonly produces partials such as ``"bir iki üç dört"``
+        after the cursor has already passed ``"bir iki"``.  Matching that full
+        phrase only from the cursor loses the sequence.  We therefore align its
+        trailing 2–6 words around the cursor and use the end of the best match.
+        Single words remain deliberately conservative to avoid false jumps.
         """
         if not self.tokens or not recognized_phrase.strip():
             return None
@@ -149,72 +156,71 @@ class WordMatcher:
 
         cur = self.current_index
         total = len(self.tokens)
+        if cur >= total:
+            return None
 
-        # 1. First priority: Check immediate next words [cur, cur + 1, cur + 2, cur + 3]
-        # Compare with the latest spoken word
+        def score_words(spoken: str, script: str) -> float:
+            if spoken == script:
+                return 1.0
+            if min(len(spoken), len(script)) >= 3 and (
+                spoken.startswith(script) or script.startswith(spoken)
+            ):
+                return 0.88
+            if min(len(spoken), len(script)) >= 4:
+                return levenshtein_similarity(spoken, script)
+            return 0.0
+
+        # Sequence alignment is the primary path.  A sequence can safely move
+        # farther than a single word, which is essential when the recognizer
+        # emits several fast-spoken words in one update.
+        max_phrase_words = min(6, len(spoken_words))
+        best_match: Optional[Tuple[float, int]] = None
+        for count in range(max_phrase_words, 1, -1):
+            suffix = spoken_words[-count:]
+            first_start = max(0, cur - 3)
+            last_start = min(total - count, cur + self.lookahead_window - count + 1)
+            for start in range(first_start, last_start + 1):
+                end = start + count - 1
+                if end < cur:
+                    continue
+
+                scores = [
+                    score_words(spoken, self.tokens[start + offset].clean_text)
+                    for offset, spoken in enumerate(suffix)
+                ]
+                strong_words = sum(score >= 0.82 for score in scores)
+                average = sum(scores) / count
+
+                # Two exact/strong words tolerate one Vosk misrecognition in a
+                # fast phrase; a two-word phrase still needs both words solid.
+                required_strong = 2
+                threshold = 0.64 if count >= 3 else 0.78
+                if strong_words < required_strong or average < threshold:
+                    continue
+
+                # Favor the closest sequential occurrence when the script has
+                # repeated wording, without blocking a confirmed fast jump.
+                adjusted = average - max(0, start - cur) * 0.012
+                if best_match is None or adjusted > best_match[0]:
+                    best_match = (adjusted, end)
+
+        if best_match is not None:
+            self.set_index(best_match[1])
+            return self.current_index
+
+        # One-word fallback: only inspect the immediately upcoming words.
+        # This keeps short/common words from jumping to another paragraph.
         latest_spoken = spoken_words[-1]
-        
-        # Check immediate next 4 words with priority
         immediate_end = min(total, cur + self.max_single_jump + 1)
         for i in range(cur, immediate_end):
             script_clean = self.tokens[i].clean_text
             if not script_clean:
                 continue
-                
-            # Exact or strong prefix match on immediate next words
-            if latest_spoken == script_clean or (len(latest_spoken) >= 3 and (latest_spoken.startswith(script_clean) or script_clean.startswith(latest_spoken))):
+            score = score_words(latest_spoken, script_clean)
+            if score >= 1.0 or (
+                latest_spoken not in COMMON_STOP_WORDS and score >= 0.76
+            ):
                 self.set_index(i)
                 return self.current_index
-            
-            # High Levenshtein on immediate word
-            if len(latest_spoken) >= 4 and len(script_clean) >= 4:
-                sim = levenshtein_similarity(latest_spoken, script_clean)
-                if sim >= 0.75:
-                    self.set_index(i)
-                    return self.current_index
-
-        # 2. Multi-word exact sequence check (if spoken_words > 1)
-        if len(spoken_words) >= 2:
-            search_end = min(total - len(spoken_words) + 1, cur + self.lookahead_window)
-            best_multi_idx = None
-            best_multi_score = 0.0
-
-            for i in range(cur, search_end):
-                score_sum = 0.0
-                for k, s_word in enumerate(spoken_words):
-                    sc_word = self.tokens[i + k].clean_text
-                    if s_word == sc_word:
-                        score_sum += 1.0
-                    elif len(s_word) >= 3 and (s_word.startswith(sc_word) or sc_word.startswith(s_word)):
-                        score_sum += 0.85
-                    else:
-                        score_sum += levenshtein_similarity(s_word, sc_word)
-
-                avg_score = score_sum / len(spoken_words)
-                
-                # Distance penalty to prevent jumping across paragraphs
-                distance = i - cur
-                distance_penalty = distance * 0.02
-                adjusted_score = avg_score - distance_penalty
-
-                if adjusted_score > best_multi_score and adjusted_score >= 0.70:
-                    best_multi_score = adjusted_score
-                    best_multi_idx = i + len(spoken_words) - 1
-
-            if best_multi_idx is not None:
-                # Ensure jump is within safe distance
-                if best_multi_idx - cur <= self.lookahead_window:
-                    self.set_index(best_multi_idx)
-                    return self.current_index
-
-        # 3. Fuzzy check on the immediate next 2 words only
-        if len(latest_spoken) >= 4 and latest_spoken not in COMMON_STOP_WORDS:
-            for i in range(cur, min(total, cur + 3)):
-                script_clean = self.tokens[i].clean_text
-                if len(script_clean) >= 4:
-                    sim = levenshtein_similarity(latest_spoken, script_clean)
-                    if sim >= 0.70:
-                        self.set_index(i)
-                        return self.current_index
 
         return None

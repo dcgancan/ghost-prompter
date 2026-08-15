@@ -42,6 +42,23 @@ class TestPrompterCore(unittest.TestCase):
         idx = matcher.match_spoken_phrase("otomatik kaydırması")
         self.assertEqual(idx, 29)  # Points cleanly to "kaydırması" at index 29, NOT index 43!
 
+    def test_cursor_can_move_past_last_word(self):
+        matcher = WordMatcher("bir iki")
+        matcher.set_index(2)
+        self.assertEqual(matcher.current_index, 2)
+
+    def test_fast_growing_partial_phrase_uses_its_recent_words(self):
+        matcher = WordMatcher("bir iki üç dört beş altı yedi sekiz")
+        # First Vosk partial has advanced the cursor past "üç".
+        self.assertEqual(matcher.match_spoken_phrase("bir iki üç"), 2)
+        matcher.set_index(3)
+
+        # A later partial includes old words and one imperfect recognition,
+        # but its recent sequence must still advance to "altı".
+        self.assertEqual(
+            matcher.match_spoken_phrase("bir iki üç dört bes altı"), 5
+        )
+
     def test_stealth_support(self):
         supported = stealth.is_stealth_supported()
         print(f"\n[Test] Windows Stealth Display Affinity Supported: {supported}")

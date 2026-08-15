@@ -35,7 +35,8 @@
   - Visible and crystal-clear on your physical monitor, but **OBS Studio, Loom, Zoom screen share, MS Teams, and Windows Screen Recorder** completely ignore the window (capturing whatever is behind it).
 - **⚡ Sub-30ms Zero-Latency Voice Tracking**:
   - Powered by local offline neural Vosk engine (supports English & Turkish).
-  - Matches spoken words in real time as you pronounce them, highlighting active words karaoke-style.
+  - Processes 20 ms audio frames locally and measures decoder response in milliseconds.
+  - Marks each spoken word as read and immediately highlights the next word, karaoke-style.
 - **🖱️ Click-Through Mode (F8 Key)**:
   - Toggle mouse transparency with a single key. Click links, buttons, and navigate websites/apps directly behind the prompter while it floats on top and tracks your voice!
 - **📏 Slim Camera Bar Preset**:
@@ -58,6 +59,7 @@
   - Siz monitörünüzde net görürken; **OBS Studio, Loom, Zoom, Teams ve Windows Ekran Kaydı** prompterı tamamen yok sayar.
 - **⚡ Sıfır Gecikmeli Yerel Ses Takibi (Sub-30ms Vosk Engine)**:
   - Tamamen bilgisayarınızda yerel çalışan yapay zeka ile konuştuğunuz kelimeleri 30 milisaniyede yakalar ve parlatır.
+  - 20 ms ses parçalarıyla çalışır; okunan kelimeyi işaretler ve anında sıradaki kelimeye geçer.
 - **🖱️ Arkaya Tıklama Modu (Click-Through - F8 Tuşu)**:
   - Prompter açıkken arkadaki web sayfalarına, butonlara veya uygulamalara doğrudan tıklayabilirsiniz.
 - **📏 Kamera Çubuğu Modu**:
@@ -80,6 +82,7 @@
 | **Left / Right Arrow** | Step 1 Word Back / Forward | 1 Kelime Geri / İleri Git |
 | **Left Click (Word)** | Jump directly to clicked word | Tıklanan kelimeye anında zıpla |
 | **Esc** | Minimize to taskbar | Simge durumuna küçült |
+| **Ctrl + 0** | Restore comfortable window size | Rahat pencere boyutuna dön |
 
 ---
 

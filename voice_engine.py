@@ -48,6 +48,7 @@ def clean_device_name(name: str) -> str:
 
 class VoiceEngineSignals(QObject):
     speech_detected = pyqtSignal(str)       # Emits recognized partial/final words instantly
+    recognition_latency = pyqtSignal(int)   # Decoder response time for the latest audio frame, in ms
     status_changed = pyqtSignal(str)         # Status text
     error_occurred = pyqtSignal(str)         # Error message
 
@@ -64,7 +65,10 @@ class VoiceEngine:
         self.is_paused = False
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._audio_queue = queue.Queue(maxsize=50)
+        # Keep only a short live buffer.  If recognition briefly falls behind,
+        # the prompter must catch up to the speaker instead of replaying old
+        # audio a second later.
+        self._audio_queue = queue.Queue(maxsize=12)
         
         self.sample_rate = 16000
         self.vosk_model: Optional[vosk.Model] = None
@@ -155,9 +159,18 @@ class VoiceEngine:
         if self.is_running and not self.is_paused:
             try:
                 # Put raw 16-bit PCM bytes into stream queue
-                self._audio_queue.put_nowait(bytes(indata))
+                # Keep a monotonic capture time with the audio frame.  This
+                # gives the UI an honest millisecond-level decoder latency,
+                # independent from system clock changes.
+                self._audio_queue.put_nowait((bytes(indata), time.perf_counter_ns()))
             except queue.Full:
-                pass
+                # Drop the oldest frame and retain the newest speech.  This is
+                # preferable to building latency during fast speech.
+                try:
+                    self._audio_queue.get_nowait()
+                    self._audio_queue.put_nowait((bytes(indata), time.perf_counter_ns()))
+                except queue.Empty:
+                    pass
 
     def _streaming_worker(self):
         """Background continuous streaming decoder thread (0ms cloud latency)."""
@@ -170,8 +183,9 @@ class VoiceEngine:
             self.recognizer = vosk.KaldiRecognizer(self.vosk_model, self.sample_rate)
             self.recognizer.SetWords(True)
 
-            # Block size = 800 samples = 50ms per audio frame
-            block_size = 800
+            # 320 samples = 20 ms per audio frame.  Smaller chunks make the
+            # recognizer react sooner while remaining stable on normal CPUs.
+            block_size = 320
             
             with sd.RawInputStream(
                 samplerate=self.sample_rate,
@@ -185,7 +199,7 @@ class VoiceEngine:
 
                 while self.is_running and not self._stop_event.is_set():
                     try:
-                        data = self._audio_queue.get(timeout=0.2)
+                        data, captured_ns = self._audio_queue.get(timeout=0.2)
                     except queue.Empty:
                         continue
 
@@ -198,6 +212,9 @@ class VoiceEngine:
                         res = json.loads(self.recognizer.Result())
                         text = res.get("text", "").strip()
                         if text:
+                            self.signals.recognition_latency.emit(
+                                int((time.perf_counter_ns() - captured_ns) / 1_000_000)
+                            )
                             self.signals.speech_detected.emit(text)
                             self._last_partial = ""
                     else:
@@ -207,6 +224,9 @@ class VoiceEngine:
                         if partial and partial != self._last_partial:
                             self._last_partial = partial
                             # Emit partial words in real time (<30ms)
+                            self.signals.recognition_latency.emit(
+                                int((time.perf_counter_ns() - captured_ns) / 1_000_000)
+                            )
                             self.signals.speech_detected.emit(partial)
 
         except Exception as e:

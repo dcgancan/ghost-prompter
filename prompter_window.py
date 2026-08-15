@@ -7,7 +7,7 @@ Full Internationalization (Turkish 🇹🇷 & English 🇺🇸) + Stealth Mode +
 import sys
 import webbrowser
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon, QFont, QColor, QCursor, QGuiApplication
+from PyQt6.QtGui import QIcon, QFont, QColor, QCursor, QGuiApplication, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QSlider, QFrame, QGraphicsDropShadowEffect,
@@ -37,14 +37,19 @@ class PrompterWindow(QMainWindow):
             Qt.WindowType.SubWindow
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setMinimumSize(380, 160)
+        # A smaller window hides the bottom controls and leaves too little
+        # room for the resize grip on a frameless window.
+        self.setMinimumSize(520, 200)
         self.resize(860, 480)
+        self.restore_shortcut = QShortcut(QKeySequence("Ctrl+0"), self)
+        self.restore_shortcut.activated.connect(self.restore_comfortable_size)
 
         # State flags
         self.is_stealth_active = True
         self.is_click_through = False
         self.is_always_on_top = True
         self.is_top_banner_mode = False
+        self._last_decoder_latency_ms = None
         
         self.saved_normal_geo = None
         self.drag_position = QPoint()
@@ -185,6 +190,7 @@ class PrompterWindow(QMainWindow):
 
         # Controls
         self.btn_editor = self._create_icon_btn("📝", "", self._open_editor)
+        self.btn_restore_size = self._create_icon_btn("⤢", "", self.restore_comfortable_size)
         self.btn_pin = self._create_icon_btn("📌", "", self.toggle_always_on_top)
         self.btn_min = self._create_icon_btn("🗕", "", self.showMinimized)
         self.btn_close = self._create_icon_btn("✕", "", self.close, is_close=True)
@@ -197,6 +203,7 @@ class PrompterWindow(QMainWindow):
         self.header_layout.addWidget(self.status_lbl)
         self.header_layout.addStretch()
         self.header_layout.addWidget(self.btn_editor)
+        self.header_layout.addWidget(self.btn_restore_size)
         self.header_layout.addWidget(self.btn_pin)
         self.header_layout.addWidget(self.btn_min)
         self.header_layout.addWidget(self.btn_close)
@@ -269,7 +276,8 @@ class PrompterWindow(QMainWindow):
         self.progress_lbl.setStyleSheet("color: #00F0FF; font-weight: bold;")
 
         self.size_grip = QSizeGrip(self.bottom_bar)
-        self.size_grip.setFixedSize(14, 14)
+        self.size_grip.setFixedSize(22, 22)
+        self.size_grip.setToolTip("Ctrl+0")
 
         self.bottom_layout.addWidget(self.btn_mode)
         self.bottom_layout.addWidget(self.btn_play_pause)
@@ -282,6 +290,19 @@ class PrompterWindow(QMainWindow):
         self.bottom_layout.addStretch()
         self.bottom_layout.addWidget(self.progress_lbl)
         self.bottom_layout.addWidget(self.size_grip)
+
+        # Prevent all bottom bar widgets from stealing keyboard focus
+        # so Up/Down arrow keys always control font size
+        for w in [self.btn_mode, self.btn_play_pause, self.btn_reset,
+                   self.btn_font_minus, self.btn_font_plus, self.btn_mirror,
+                   self.opacity_slider, self.size_grip]:
+            w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        # Same for header bar widgets
+        for w in [self.brand_btn, self.btn_lang_toggle, self.stealth_badge,
+                   self.click_through_badge, self.btn_top_banner,
+                   self.btn_editor, self.btn_pin, self.btn_min, self.btn_close]:
+            w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.card_layout.addWidget(self.header_bar)
         self.card_layout.addWidget(self.canvas, 1)
@@ -308,6 +329,7 @@ class PrompterWindow(QMainWindow):
         self.status_lbl.setText(t("status_waiting"))
         
         self.btn_editor.setToolTip(t("btn_editor_tip"))
+        self.btn_restore_size.setToolTip(t("btn_restore_size_tip"))
         self.btn_pin.setToolTip(t("btn_pin_tip"))
         self.btn_min.setToolTip(t("btn_min_tip"))
         self.btn_close.setToolTip(t("btn_close_tip"))
@@ -381,6 +403,7 @@ class PrompterWindow(QMainWindow):
 
     def _connect_signals(self):
         self.voice_engine.signals.speech_detected.connect(self._on_speech_recognized)
+        self.voice_engine.signals.recognition_latency.connect(self._on_recognition_latency)
         self.voice_engine.signals.status_changed.connect(self._on_voice_status_changed)
         self.voice_engine.signals.error_occurred.connect(self._on_voice_error)
         self.canvas.progress_changed.connect(self._on_progress_update)
@@ -467,7 +490,7 @@ class PrompterWindow(QMainWindow):
         if self.is_top_banner_mode:
             self.saved_normal_geo = self.geometry()
             banner_w = int(screen.width() * 0.94)
-            banner_h = 180
+            banner_h = 220
             banner_x = int((screen.width() - banner_w) / 2)
             banner_y = screen.top() + 6
             self.setGeometry(banner_x, banner_y, banner_w, banner_h)
@@ -478,6 +501,20 @@ class PrompterWindow(QMainWindow):
             else:
                 self.resize(860, 480)
             self.btn_top_banner.setText(t("top_banner_btn"))
+
+    def restore_comfortable_size(self):
+        """Return to a usable, centered size even when resize controls were hidden."""
+        self.is_top_banner_mode = False
+        self.btn_top_banner.setText(I18nManager.t("top_banner_btn"))
+        self.showNormal()
+
+        screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
+        available = screen.availableGeometry()
+        width = min(860, available.width())
+        height = min(480, available.height())
+        x = available.x() + max(0, (available.width() - width) // 2)
+        y = available.y() + max(0, (available.height() - height) // 2)
+        self.setGeometry(x, y, width, height)
 
     def toggle_always_on_top(self):
         self.is_always_on_top = not self.is_always_on_top
@@ -544,7 +581,18 @@ class PrompterWindow(QMainWindow):
         self.status_lbl.setText(f"🗣️ \"{phrase[:24]}...\"" if len(phrase) > 24 else f"🗣️ \"{phrase}\"")
         matched_idx = self.matcher.match_spoken_phrase(phrase)
         if matched_idx is not None:
-            self.canvas.update_active_word(matched_idx)
+            # The detected word has just been read.  Mark it as read and move
+            # the cursor to the *next* word immediately, rather than leaving
+            # the already-spoken word highlighted.
+            self.canvas.update_active_word(matched_idx + 1)
+            if self._last_decoder_latency_ms is not None:
+                self.status_lbl.setText(f"✓ Sıradaki kelime • {self._last_decoder_latency_ms} ms")
+
+    def _on_recognition_latency(self, latency_ms: int):
+        """Show the measured audio-frame-to-decoder delay without claiming
+        it is the physical speech onset time (which a microphone cannot know).
+        """
+        self._last_decoder_latency_ms = latency_ms
 
     def _on_voice_status_changed(self, status: str):
         self.status_lbl.setText(status)
@@ -553,7 +601,7 @@ class PrompterWindow(QMainWindow):
         self.status_lbl.setText(f"⚠️ {err[:25]}")
 
     def _on_progress_update(self, current: int, total: int):
-        self.progress_lbl.setText(f"{current + 1} / {total}")
+        self.progress_lbl.setText(f"{min(current, total)} / {total}")
 
     def _open_editor(self):
         self.open_editor_requested.emit()
@@ -585,7 +633,9 @@ class PrompterWindow(QMainWindow):
     # Keyboard Shortcuts
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key.Key_F8:
+        if key == Qt.Key.Key_0 and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.restore_comfortable_size()
+        elif key == Qt.Key.Key_F8:
             self.toggle_click_through()
         elif key == Qt.Key.Key_Space:
             self.toggle_play_pause()

@@ -33,8 +33,7 @@ class PrompterWindow(QMainWindow):
         # Window Configuration
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.SubWindow
+            Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         # A smaller window hides the bottom controls and leaves too little
@@ -193,6 +192,7 @@ class PrompterWindow(QMainWindow):
         self.btn_restore_size = self._create_icon_btn("⤢", "", self.restore_comfortable_size)
         self.btn_pin = self._create_icon_btn("📌", "", self.toggle_always_on_top)
         self.btn_min = self._create_icon_btn("🗕", "", self.showMinimized)
+        self.btn_max = self._create_icon_btn("🗖", "", self.toggle_maximize_restore)
         self.btn_close = self._create_icon_btn("✕", "", self.close, is_close=True)
 
         self.header_layout.addWidget(self.brand_btn)
@@ -206,6 +206,7 @@ class PrompterWindow(QMainWindow):
         self.header_layout.addWidget(self.btn_restore_size)
         self.header_layout.addWidget(self.btn_pin)
         self.header_layout.addWidget(self.btn_min)
+        self.header_layout.addWidget(self.btn_max)
         self.header_layout.addWidget(self.btn_close)
 
         # 2. Prompter Canvas
@@ -332,6 +333,8 @@ class PrompterWindow(QMainWindow):
         self.btn_restore_size.setToolTip(t("btn_restore_size_tip"))
         self.btn_pin.setToolTip(t("btn_pin_tip"))
         self.btn_min.setToolTip(t("btn_min_tip"))
+        self.btn_max.setToolTip(t("btn_restore_tip") if self.isMaximized() else t("btn_max_tip"))
+        self.btn_max.setText("🗗" if self.isMaximized() else "🗖")
         self.btn_close.setToolTip(t("btn_close_tip"))
         
         self.btn_mode.setText(t("mode_manual") if self.canvas.is_manual_mode else t("mode_voice"))
@@ -515,6 +518,31 @@ class PrompterWindow(QMainWindow):
         x = available.x() + max(0, (available.width() - width) // 2)
         y = available.y() + max(0, (available.height() - height) // 2)
         self.setGeometry(x, y, width, height)
+        self.btn_max.setText("🗖")
+        self.btn_max.setToolTip(I18nManager.t("btn_max_tip"))
+
+    def toggle_maximize_restore(self):
+        """Toggle full screen / normal prompter size."""
+        if self.isMaximized():
+            self.showNormal()
+            self.btn_max.setText("🗖")
+            self.btn_max.setToolTip(I18nManager.t("btn_max_tip"))
+        else:
+            self.showMaximized()
+            self.btn_max.setText("🗗")
+            self.btn_max.setToolTip(I18nManager.t("btn_restore_tip"))
+        self.apply_stealth_mode(self.is_stealth_active)
+
+    def changeEvent(self, event):
+        if event.type() == event.Type.WindowStateChange:
+            if not self.isMinimized():
+                self.apply_stealth_mode(self.is_stealth_active)
+                if hasattr(self, "btn_max"):
+                    self.btn_max.setText("🗗" if self.isMaximized() else "🗖")
+                    self.btn_max.setToolTip(
+                        I18nManager.t("btn_restore_tip") if self.isMaximized() else I18nManager.t("btn_max_tip")
+                    )
+        super().changeEvent(event)
 
     def toggle_always_on_top(self):
         self.is_always_on_top = not self.is_always_on_top
@@ -630,10 +658,20 @@ class PrompterWindow(QMainWindow):
         self.is_dragging = False
         super().mouseReleaseEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.header_bar.geometry().contains(event.position().toPoint()):
+                self.toggle_maximize_restore()
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
+
     # Keyboard Shortcuts
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key.Key_0 and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+        if key == Qt.Key.Key_F11:
+            self.toggle_maximize_restore()
+        elif key == Qt.Key.Key_0 and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self.restore_comfortable_size()
         elif key == Qt.Key.Key_F8:
             self.toggle_click_through()

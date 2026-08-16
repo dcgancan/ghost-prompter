@@ -1,94 +1,46 @@
-# 👻 GhostPrompter
+# GhostPrompter — macOS Port
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Author-Muzaffer%20Ulusoy-00F0FF?style=for-the-badge" alt="Author">
-  <img src="https://img.shields.io/badge/Brand-Ulusoy%20Digital-7928CA?style=for-the-badge" alt="Brand">
-  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?style=for-the-badge&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/Language-English%20%2F%20T%C3%BCrk%C3%A7e-success?style=for-the-badge" alt="Language">
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
-</p>
+A macOS port of [**muqo16/ghost-prompter**](https://github.com/muqo16/ghost-prompter) by [Muzaffer Ulusoy](https://github.com/muqo16) ([ulusoydigital.com](https://ulusoydigital.com)).
 
-<p align="center">
-  <b>🎙️ Next-Gen Voice-Activated & Screen-Recorder-Invisible Teleprompter for Windows.</b><br>
-  <i>Follows your speech word-by-word with zero latency (sub-30ms) while remaining 100% invisible in screen recordings (OBS, Loom, Zoom, Teams, Camtasia, Windows Game Bar).</i>
-</p>
+All features, design and original implementation are his. This fork only adds macOS support; the app still runs on Windows exactly as before.
 
-<p align="center">
-  🌐 <b>Website:</b> <a href="https://ulusoydigital.com">ulusoydigital.com</a> &nbsp;|&nbsp; 
-  👤 <b>Developer:</b> <a href="https://github.com/muqo16">Muzaffer Ulusoy (@muqo16)</a>
-</p>
+For what GhostPrompter is and how to use it, see the [original repository](https://github.com/muqo16/ghost-prompter).
 
 ---
 
-## 🌍 Language / Dil Seçimi
-* [English (Global)](#-english-documentation)
-* [Türkçe (Dokümantasyon)](#-türkçe-dokümantasyon)
+## What this fork changes
 
----
+- **Stealth mode on macOS** — `NSWindow.sharingType = .none`, the counterpart of the original's `SetWindowDisplayAffinity`. Window stays invisible to screen recorders.
+- **Click-through on macOS** — `NSWindow.ignoresMouseEvents`.
+- **Floats over full-screen apps** — Qt's always-on-top flag alone does not do this on macOS.
+- **`stealth.py` split into per-platform backends** (`stealth_win.py` / `stealth_mac.py`) behind an unchanged API.
+- **`requirements.txt` fixed** — `vosk` was missing entirely, and is now pinned to `0.3.44` because `0.3.45` has no macOS wheel. Unused `pyaudio` / `SpeechRecognition` removed.
+- **`run.command` launcher**, platform-aware shortcut labels, macOS UI font.
 
-# 🇺🇸 English Documentation
+## Run
 
-### ✨ Key Features
+**macOS**
+```bash
+./run.command
+```
+Creates a virtual environment, installs dependencies and downloads the offline speech model on first launch. Allow microphone access when asked.
 
-- **🛡️ 100% Stealth Mode (Invisible to Screen Recorders)**:
-  - Powered by Windows Native `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE = 0x11)` API.
-  - Visible and crystal-clear on your physical monitor, but **OBS Studio, Loom, Zoom screen share, MS Teams, and Windows Screen Recorder** completely ignore the window (capturing whatever is behind it).
-- **⚡ Sub-30ms Zero-Latency Voice Tracking**:
-  - Powered by local offline neural Vosk engine (supports English & Turkish).
-  - Processes 20 ms audio frames locally and measures decoder response in milliseconds.
-  - Marks each spoken word as read and immediately highlights the next word, karaoke-style.
-- **🖱️ Click-Through Mode (F8 Key)**:
-  - Toggle mouse transparency with a single key. Click links, buttons, and navigate websites/apps directly behind the prompter while it floats on top and tracks your voice!
-- **📏 Slim Camera Bar Preset**:
-  - Dock prompter horizontally right under your webcam to maintain direct camera eye contact while leaving 85% of your screen open for your browser or slide deck.
-- **🪞 100% Transparent Glass & Mirror Mode**:
-  - Adjustable 0% to 100% background transparency. Full support for beam-splitter physical prompter glass (`M` key).
+**Windows** — unchanged, use `run.bat`.
 
-### 🚀 Quick Start
-1. Double-click **`run.bat`** to start GhostPrompter immediately.
-2. Click the **`🇹🇷 TR / 🇺🇸 EN`** button on the top header to switch language.
+> macOS reserves `F8`, so use **`fn+F8`** or **`⌘⇧C`** for click-through.
 
----
+## Verification
 
-# 🇹🇷 Türkçe Dokümantasyon
+macOS stealth was tested on macOS 27.0 against four capture paths — `CGWindowList`, `screencapture`, `SCScreenshotManager`, and a live `SCStream` (what OBS, Zoom, Teams and Loom use). The window was excluded from all four.
 
-### ✨ Temel Özellikler
+```bash
+.venv/bin/python spike/stealth_spike.py   # re-run the stealth test
+.venv/bin/python spike/verify_port.py     # check the port wiring
+.venv/bin/python spike/verify_voice.py    # check the microphone path
+```
 
-- **🛡️ %100 Hayalet Modu (Ekran Kaydedicilerde Görünmezlik)**:
-  - Windows yerel `SetWindowDisplayAffinity(0x11)` API'si ile çalışır.
-  - Siz monitörünüzde net görürken; **OBS Studio, Loom, Zoom, Teams ve Windows Ekran Kaydı** prompterı tamamen yok sayar.
-- **⚡ Sıfır Gecikmeli Yerel Ses Takibi (Sub-30ms Vosk Engine)**:
-  - Tamamen bilgisayarınızda yerel çalışan yapay zeka ile konuştuğunuz kelimeleri 30 milisaniyede yakalar ve parlatır.
-  - 20 ms ses parçalarıyla çalışır; okunan kelimeyi işaretler ve anında sıradaki kelimeye geçer.
-- **🖱️ Arkaya Tıklama Modu (Click-Through - F8 Tuşu)**:
-  - Prompter açıkken arkadaki web sayfalarına, butonlara veya uygulamalara doğrudan tıklayabilirsiniz.
-- **📏 Kamera Çubuğu Modu**:
-  - Prompterı kameranın tam altına ince şerit olarak yerleştirir, ekranın altını tamamen açık bırakır.
-- **🌐 Çift Dil Desteği**:
-  - Tek tıkla Türkçe ve İngilizce arasında anında geçiş yapabilirsiniz.
+⚠️ Apple has changed capture behaviour before. **Do a real test recording before relying on stealth.**
 
----
+## License
 
-## ⌨️ Keyboard Shortcuts / Klavye Kısayolları
-
-| Shortcut / Kısayol | Function (EN) | İşlev (TR) |
-| :--- | :--- | :--- |
-| **Space / Boşluk** | Play / Pause | Oynat / Duraklat |
-| **F8** | Toggle Click-Through Mode | Arkaya Tıklama Modunu Aç/Kapat |
-| **R** | Reset Script to Beginning | Metni Başa Sar |
-| **G** | Toggle Stealth Mode | Kayıtta Gizlilik Modunu Aç/Kapat |
-| **M** | Flip Horizontal (Mirror Glass) | Ayna Modu (Prompter Camı İçin) |
-| **Up / Down Arrow** | Increase / Decrease Font Size | Font Boyutunu Büyüt / Küçült |
-| **Left / Right Arrow** | Step 1 Word Back / Forward | 1 Kelime Geri / İleri Git |
-| **Left Click (Word)** | Jump directly to clicked word | Tıklanan kelimeye anında zıpla |
-| **Esc** | Minimize to taskbar | Simge durumuna küçült |
-| **Ctrl + 0** | Restore comfortable window size | Rahat pencere boyutuna dön |
-
----
-
-## 👨‍💻 Developer & Brand
-
-* **Developer:** Muzaffer Ulusoy
-* **GitHub Profile:** [@muqo16](https://github.com/muqo16)
-* **Official Website:** [ulusoydigital.com](https://ulusoydigital.com)
-* **License:** [MIT License](LICENSE) (2026 Muzaffer Ulusoy)
+MIT, © Muzaffer Ulusoy — see [LICENSE](LICENSE). Unchanged from the original.

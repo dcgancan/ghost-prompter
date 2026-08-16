@@ -43,6 +43,13 @@ class PrompterWindow(QMainWindow):
         self.restore_shortcut = QShortcut(QKeySequence("Ctrl+0"), self)
         self.restore_shortcut.activated.connect(self.restore_comfortable_size)
 
+        # macOS hands F8 to playback/Spaces before the app sees it, so the
+        # documented click-through key needs a companion binding that does not
+        # depend on the user's function-key setting.
+        if sys.platform == "darwin":
+            self.click_through_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
+            self.click_through_shortcut.activated.connect(self.toggle_click_through)
+
         # State flags
         self.is_stealth_active = True
         self.is_click_through = False
@@ -278,7 +285,6 @@ class PrompterWindow(QMainWindow):
 
         self.size_grip = QSizeGrip(self.bottom_bar)
         self.size_grip.setFixedSize(22, 22)
-        self.size_grip.setToolTip("Ctrl+0")
 
         self.bottom_layout.addWidget(self.btn_mode)
         self.bottom_layout.addWidget(self.btn_play_pause)
@@ -352,6 +358,7 @@ class PrompterWindow(QMainWindow):
         
         self.opacity_lbl.setText(t("lbl_opacity"))
         self.opacity_slider.setToolTip(t("opacity_tip"))
+        self.size_grip.setToolTip(t("btn_restore_size_tip"))
 
     def toggle_language(self):
         """Switches between Turkish (tr) and English (en)."""
@@ -414,6 +421,10 @@ class PrompterWindow(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self.apply_stealth_mode(True)
+        # Qt's stay-on-top hint does not clear full-screen apps on macOS, and a
+        # full-screen app is a normal thing to be presenting over.
+        if self.is_always_on_top:
+            stealth.set_floating_above_fullscreen(int(self.winId()), True)
 
     def apply_stealth_mode(self, enable: bool):
         hwnd = int(self.winId())
@@ -556,6 +567,7 @@ class PrompterWindow(QMainWindow):
         self.setWindowFlags(flags)
         self.show()
         self.apply_stealth_mode(self.is_stealth_active)
+        stealth.set_floating_above_fullscreen(int(self.winId()), self.is_always_on_top)
 
     def toggle_voice_manual_mode(self):
         self.canvas.is_manual_mode = not self.canvas.is_manual_mode

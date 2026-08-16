@@ -1,6 +1,20 @@
+# Core UI
 PyQt6>=6.5.0
-SpeechRecognition>=3.10.0
+
+# Offline speech recognition.
+# Pinned deliberately: vosk 0.3.45 dropped its macOS wheel, so an unpinned
+# `pip install vosk` fails on Mac. 0.3.44 publishes win32, win_amd64, macOS
+# universal2 and Linux wheels, so a single pin covers every platform.
+vosk==0.3.44
+
+# Audio capture and word matching
 sounddevice>=0.4.6
 numpy>=1.24.0
 rapidfuzz>=3.0.0
-pyaudio
+
+# macOS stealth mode (NSWindow.sharingType) and click-through
+pyobjc-framework-Cocoa>=10.0 ; sys_platform == "darwin"
+
+# Removed: SpeechRecognition and pyaudio. Nothing imports them since the switch
+# to the Vosk streaming engine, and pyaudio additionally needs a Homebrew
+# portaudio to build on macOS.

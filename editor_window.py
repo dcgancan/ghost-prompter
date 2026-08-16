@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 from voice_engine import VoiceEngine
 from i18n import I18nManager
+from prompter_view import UI_FONT_FAMILY
 
 
 class EditorWindow(QWidget):
@@ -32,7 +33,7 @@ class EditorWindow(QWidget):
             QWidget {
                 background-color: #0B0E14;
                 color: #E6EDF3;
-                font-family: 'Segoe UI', sans-serif;
+                font-family: '%UI_FONT%', sans-serif;
             }
             QTabWidget::pane {
                 border: 1px solid rgba(0, 240, 255, 0.2);
@@ -112,7 +113,7 @@ class EditorWindow(QWidget):
             QLabel {
                 color: #8B949E;
             }
-        """)
+        """.replace("%UI_FONT%", UI_FONT_FAMILY))
 
         self._init_ui()
         self.retranslate_ui()

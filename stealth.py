@@ -1,96 +1,62 @@
 """
-Windows Screen Capture Invisibility (Stealth Mode) & Click-Through Module
-Uses Windows Win32 API SetWindowDisplayAffinity to exclude the prompter window
-from screen recordings, and SetWindowLongPtr for Click-Through mouse transparency.
+Screen Capture Invisibility (Stealth Mode) & Click-Through
+
+Platform-neutral front door. The real work lives in a per-platform backend:
+
+    Windows -> stealth_win.py   SetWindowDisplayAffinity / SetWindowLongPtr
+    macOS   -> stealth_mac.py   NSWindow.sharingType / ignoresMouseEvents
+
+Every function takes the value of Qt's `winId()`. That is an HWND on Windows
+and an NSView* on macOS; each backend knows what to do with its own. On any
+other platform the calls become no-ops that report failure, so the UI can show
+the prompter as visible rather than silently pretending it is hidden.
 """
 
 import sys
-import ctypes
-from ctypes import wintypes
 
-# Win32 Constants
-WDA_NONE = 0x00000000
-WDA_MONITOR = 0x00000001
-WDA_EXCLUDEFROMCAPTURE = 0x00000011  # Windows 10 Version 2004+ / Windows 11
+BACKEND = None
 
-GWL_EXSTYLE = -20
-WS_EX_TRANSPARENT = 0x00000020
-WS_EX_LAYERED = 0x00080000
-
-user32 = None
 if sys.platform == "win32":
-    try:
-        user32 = ctypes.windll.user32
-        
-        user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
-        user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
-        
-        user32.GetWindowDisplayAffinity.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-        user32.GetWindowDisplayAffinity.restype = wintypes.BOOL
+    import stealth_win as BACKEND
+elif sys.platform == "darwin":
+    import stealth_mac as BACKEND
 
-        # 64-bit and 32-bit window long pointer functions
-        if hasattr(user32, "GetWindowLongPtrW"):
-            user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
-            user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
-            user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
-            user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
-            _get_long = user32.GetWindowLongPtrW
-            _set_long = user32.SetWindowLongPtrW
-        else:
-            user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
-            user32.GetWindowLongW.restype = wintypes.LONG
-            user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.LONG]
-            user32.SetWindowLongW.restype = wintypes.LONG
-            _get_long = user32.GetWindowLongW
-            _set_long = user32.SetWindowLongW
 
-    except Exception as e:
-        print(f"[Stealth] Win32 init warning: {e}")
+def backend_name() -> str:
+    """Human-readable backend name, e.g. for status text and tests."""
+    return getattr(BACKEND, "NAME", "unsupported")
 
 
 def is_stealth_supported() -> bool:
-    """Returns True if running on Windows with SetWindowDisplayAffinity support."""
-    return user32 is not None and hasattr(user32, "SetWindowDisplayAffinity")
-
-
-def set_stealth_mode(hwnd: int, enable: bool = True) -> bool:
-    """
-    Toggles stealth mode for the given window handle.
-    When enable is True, sets WDA_EXCLUDEFROMCAPTURE (0x11) so screen recorders
-    will not capture this window at all.
-    """
-    if not is_stealth_supported() or not hwnd:
+    """True if this platform can hide the window from screen recorders."""
+    if BACKEND is None:
         return False
-
-    try:
-        if enable:
-            res = user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
-            if not res:
-                res = user32.SetWindowDisplayAffinity(hwnd, WDA_MONITOR)
-            return bool(res)
-        else:
-            res = user32.SetWindowDisplayAffinity(hwnd, WDA_NONE)
-            return bool(res)
-    except Exception as e:
-        print(f"[Stealth] Error setting display affinity: {e}")
-        return False
+    return BACKEND.is_stealth_supported()
 
 
-def set_click_through(hwnd: int, enable: bool = True) -> bool:
+def set_stealth_mode(handle: int, enable: bool = True) -> bool:
+    """Hide (or unhide) the window from screen recorders.
+
+    Returns True only when the platform confirms it took effect.
     """
-    Toggles mouse click-through for the given window handle.
-    When enable is True, mouse clicks pass directly to the application behind it.
+    if BACKEND is None or not handle:
+        return False
+    return BACKEND.set_stealth_mode(handle, enable)
+
+
+def set_click_through(handle: int, enable: bool = True) -> bool:
+    """Toggle mouse click-through, so clicks reach the app behind the window."""
+    if BACKEND is None or not handle:
+        return False
+    return BACKEND.set_click_through(handle, enable)
+
+
+def set_floating_above_fullscreen(handle: int, enable: bool = True) -> bool:
+    """Keep the window above full-screen apps.
+
+    Windows gets this from the topmost flag Qt already sets; macOS needs an
+    explicit call, which is why this is part of the backend interface.
     """
-    if user32 is None or not hwnd:
+    if BACKEND is None or not handle:
         return False
-    try:
-        style = _get_long(hwnd, GWL_EXSTYLE)
-        if enable:
-            new_style = style | WS_EX_TRANSPARENT | WS_EX_LAYERED
-        else:
-            new_style = style & ~WS_EX_TRANSPARENT
-        _set_long(hwnd, GWL_EXSTYLE, new_style)
-        return True
-    except Exception as e:
-        print(f"[Stealth] Error setting click-through: {e}")
-        return False
+    return BACKEND.set_floating_above_fullscreen(handle, enable)

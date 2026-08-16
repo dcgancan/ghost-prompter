@@ -20,9 +20,17 @@ vosk.SetLogLevel(-1)
 
 
 def clean_device_name(name: str) -> str:
-    """Fixes Windows audio driver UTF-8 / Mojibake encoding artifacts."""
+    """Fixes Windows audio driver UTF-8 / Mojibake encoding artifacts.
+
+    Windows-only on purpose. macOS and Linux report device names as proper
+    UTF-8, and the latin1 round-trip below would mangle a correctly-encoded
+    name rather than repair it.
+    """
     if not name:
         return ""
+    if sys.platform != "win32":
+        return name.strip()
+
     fixes = {
         'EÅŸleÅŸtiricisi': 'Eşleştiricisi',
         'SÃ¼rÃ¼cÃ¼sÃ¼': 'Sürücüsü',

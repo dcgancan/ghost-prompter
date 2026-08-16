@@ -3,7 +3,29 @@ Internationalization (i18n) Module
 Supports full instant switching between Turkish (TR) and English (EN).
 """
 
+import sys
 from typing import Dict, Any
+
+# Shortcut names differ per platform, and they appear inside translated
+# sentences. Rather than forking every sentence per platform, the translations
+# carry a placeholder that t() substitutes on the way out.
+#
+# macOS reserves F8 for playback/Spaces, so a bare F8 press never reaches the
+# app unless the user has turned on "Use F1, F2, etc. keys as standard function
+# keys". fn+F8 always works, and the app also binds Cmd+Shift+C as an
+# easier-to-hit alternative while presenting.
+if sys.platform == "darwin":
+    SHORTCUT_LABELS = {
+        "%CLICK_THROUGH_KEY%": "fn+F8 or Cmd+Shift+C",
+        "%CLICK_THROUGH_KEY_SHORT%": "⌘⇧C",
+        "%RESTORE_KEY%": "Cmd+0",
+    }
+else:
+    SHORTCUT_LABELS = {
+        "%CLICK_THROUGH_KEY%": "F8",
+        "%CLICK_THROUGH_KEY_SHORT%": "F8",
+        "%RESTORE_KEY%": "Ctrl+0",
+    }
 
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "tr": {
@@ -13,9 +35,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "stealth_hidden": "🛡️ Kayıtta Gizli",
         "stealth_visible": "👁️ Kayıtta Görünür",
         "stealth_tip": "OBS, Loom ve Ekran Kaydedicilerde bu pencere görünmez!\nTıklayarak gizlilik modunu açıp kapatabilirsiniz.",
-        "click_through_off": "🖱️ Arkaya Tıkla (F8)",
-        "click_through_on": "🔓 Arkaya Tıkla: AÇIK (F8)",
-        "click_through_tip": "Tıklama Geçirgenliği (F8 Tuşu):\nAktif edildiğinde fareniz doğrudan arkadaki tarayıcıya/uygulamaya tıklar.\nPrompter üstte şeffaf kalır ve sesinizi takip eder!",
+        "click_through_off": "🖱️ Arkaya Tıkla (%CLICK_THROUGH_KEY_SHORT%)",
+        "click_through_on": "🔓 Arkaya Tıkla: AÇIK (%CLICK_THROUGH_KEY_SHORT%)",
+        "click_through_tip": "Tıklama Geçirgenliği (%CLICK_THROUGH_KEY%):\nAktif edildiğinde fareniz doğrudan arkadaki tarayıcıya/uygulamaya tıklar.\nPrompter üstte şeffaf kalır ve sesinizi takip eder!",
         "top_banner_btn": "📏 Kamera Çubuğu",
         "normal_size_btn": "📱 Normal Boyut",
         "top_banner_tip": "Prompterı kameranın tam altına ince yatay şerit yapar.\nBöylece ekranın altındaki tüm buton ve uygulamaları rahatça görürsünüz!",
@@ -23,7 +45,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "status_listening": "🎤 Konuşmanız canlı dinleniyor (Sıfır Gecikme)...",
         "status_paused": "⏸️ Ses takibi duraklatıldı",
         "status_stopped": "⏹️ Ses takibi kapalı",
-        "status_click_through": "🔓 Fareniz arkadaki uygulamaya tıklar (Kapatmak için F8)",
+        "status_click_through": "🔓 Fareniz arkadaki uygulamaya tıklar (Kapatmak için %CLICK_THROUGH_KEY_SHORT%)",
         "status_manual": "⌨️ Manuel akış modu",
         "mode_voice": "🎤 Ses Takipli",
         "mode_manual": "⌨️ Manuel Hız",
@@ -38,7 +60,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "lbl_opacity": "Şeffaflık:",
         "opacity_tip": "Arka plan şeffaflığı (0% = Arkadaki ekran tamamen görünür)",
         "btn_editor_tip": "Metin Düzenleyici ve Ayarlar Paneli",
-        "btn_restore_size_tip": "Rahat pencere boyutuna dön (Ctrl+0)",
+        "btn_restore_size_tip": "Rahat pencere boyutuna dön (%RESTORE_KEY%)",
         "btn_pin_tip": "Her Zaman Üstte Sabitle",
         "btn_min_tip": "Simge Durumuna Küçült / Aşağı İndir",
         "btn_max_tip": "Tam Ekran / Büyüt",
@@ -79,9 +101,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "stealth_hidden": "🛡️ Hidden on Recording",
         "stealth_visible": "👁️ Visible on Recording",
         "stealth_tip": "This window is invisible to OBS, Loom, Zoom & Screen Recorders!\nClick to toggle stealth mode.",
-        "click_through_off": "🖱️ Click-Through (F8)",
-        "click_through_on": "🔓 Click-Through: ON (F8)",
-        "click_through_tip": "Click-Through Mode (F8 Key):\nWhen enabled, your mouse clicks pass straight through to background apps/browser.\nPrompter stays on top and tracks your voice seamlessly!",
+        "click_through_off": "🖱️ Click-Through (%CLICK_THROUGH_KEY_SHORT%)",
+        "click_through_on": "🔓 Click-Through: ON (%CLICK_THROUGH_KEY_SHORT%)",
+        "click_through_tip": "Click-Through Mode (%CLICK_THROUGH_KEY%):\nWhen enabled, your mouse clicks pass straight through to background apps/browser.\nPrompter stays on top and tracks your voice seamlessly!",
         "top_banner_btn": "📏 Top Camera Bar",
         "normal_size_btn": "📱 Normal Size",
         "top_banner_tip": "Docks prompter as a slim banner right under your webcam.\nLeaves the entire screen below open for your browser & apps!",
@@ -89,7 +111,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "status_listening": "🎤 Listening live (Zero Latency)...",
         "status_paused": "⏸️ Voice tracking paused",
         "status_stopped": "⏹️ Voice tracking stopped",
-        "status_click_through": "🔓 Mouse clicks through to background apps (Press F8 to toggle)",
+        "status_click_through": "🔓 Mouse clicks through to background apps (Press %CLICK_THROUGH_KEY_SHORT% to toggle)",
         "status_manual": "⌨️ Manual scroll mode",
         "mode_voice": "🎤 Voice-Synced",
         "mode_manual": "⌨️ Manual Speed",
@@ -104,7 +126,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "lbl_opacity": "Opacity:",
         "opacity_tip": "Background opacity (0% = 100% transparent glass)",
         "btn_editor_tip": "Script Editor & Settings Panel",
-        "btn_restore_size_tip": "Restore Comfortable Size (Ctrl+0)",
+        "btn_restore_size_tip": "Restore Comfortable Size (%RESTORE_KEY%)",
         "btn_pin_tip": "Pin Always on Top",
         "btn_min_tip": "Minimize",
         "btn_max_tip": "Maximize Window",
@@ -206,7 +228,11 @@ class I18nManager:
     @classmethod
     def t(cls, key: str) -> str:
         lang_dict = TRANSLATIONS.get(cls._current_lang, TRANSLATIONS["tr"])
-        return lang_dict.get(key, key)
+        text = lang_dict.get(key, key)
+        for placeholder, label in SHORTCUT_LABELS.items():
+            if placeholder in text:
+                text = text.replace(placeholder, label)
+        return text
 
     @classmethod
     def get_samples(cls) -> Dict[str, str]:

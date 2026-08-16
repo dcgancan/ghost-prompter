@@ -43,3 +43,6 @@ venv.bak/
 *~
 .DS_Store
 Thumbs.db
+
+# Spike capture artifacts
+spike/*.png

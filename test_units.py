@@ -61,9 +61,20 @@ class TestPrompterCore(unittest.TestCase):
 
     def test_stealth_support(self):
         supported = stealth.is_stealth_supported()
-        print(f"\n[Test] Windows Stealth Display Affinity Supported: {supported}")
-        if sys.platform == "win32":
+        print(f"\n[Test] Stealth backend: {stealth.backend_name()} (supported: {supported})")
+        if sys.platform in ("win32", "darwin"):
             self.assertTrue(supported)
+
+    def test_stealth_backend_selection(self):
+        expected = {"win32": "windows", "darwin": "macos"}.get(sys.platform, "unsupported")
+        self.assertEqual(stealth.backend_name(), expected)
+
+    def test_stealth_rejects_null_handle(self):
+        # A zero handle means the window is not realised yet. Every entry point
+        # has to refuse it rather than hand it to a native API.
+        self.assertFalse(stealth.set_stealth_mode(0, True))
+        self.assertFalse(stealth.set_click_through(0, True))
+        self.assertFalse(stealth.set_floating_above_fullscreen(0, True))
 
 
 if __name__ == "__main__":

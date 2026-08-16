@@ -3,6 +3,7 @@ High-Performance Prompter Render Widget
 100% Transparent Background Support + High-Contrast Glowing Text + Zero Ghost Scrolling
 """
 
+import sys
 from typing import List, Optional, Tuple
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal
 from PyQt6.QtWidgets import QWidget
@@ -12,6 +13,10 @@ from PyQt6.QtGui import (
     QPainterPath
 )
 from word_matcher import WordMatcher, ScriptToken
+
+# Segoe UI does not exist on macOS, and letting Qt fall back silently gives the
+# prompter a noticeably worse face than the rest of the system UI.
+UI_FONT_FAMILY = "Helvetica Neue" if sys.platform == "darwin" else "Segoe UI"
 
 
 class PrompterCanvas(QWidget):
@@ -23,7 +28,7 @@ class PrompterCanvas(QWidget):
         self.matcher = matcher
         
         # Display settings
-        self.font_family = "Segoe UI"
+        self.font_family = UI_FONT_FAMILY
         self.font_size = 32
         self.line_spacing = 1.45
         self.mirror_h = False
